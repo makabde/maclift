@@ -72,7 +72,7 @@ test_full_flow() {
   assert_equals "0" "$rc" "exit code 0"
   assert_file_exists "$CONF/user.conf" "user.conf exists"
   assert_command_succeeds "grep -q 'MACLIFT_NAME=\"Test User\"' '$CONF/user.conf'" "user.conf has the name"
-  assert_command_succeeds "grep -q 'brew:git' '$CONF/selection.conf'" "selection.conf has brew:git"
+  assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:git'" "selection.conf has brew:git"
   assert_command_succeeds "[ -L '$MACLIFT_HOME/.zshrc' ]" ".zshrc is a symlink"
   case "$(readlink "$MACLIFT_HOME/.zshrc")" in
     "$PROJECT_ROOT/dotfiles/"*) assert_equals "ok" "ok" ".zshrc points into the repo dotfiles" ;;
@@ -188,7 +188,7 @@ test_fine_tune_and_save() {
   } | "$MACLIFT" >/dev/null 2>&1 || rc=$?
   assert_equals "0" "$rc" "exit code 0"
   assert_command_fails "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q '$first'" "$first unticked"
-  assert_command_succeeds "grep -q 'brew:git' '$CONF/selection.conf'" "required item kept"
+  assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:git'" "required item kept"
   assert_command_fails "grep -q '^install' '$MACLIFT_STUB_DIR/brew.calls'" "nothing installed"
   assert_command_fails "[ -e '$MACLIFT_HOME/.zshrc' ]" "nothing linked"
 
@@ -236,7 +236,7 @@ test_from() {
   local rc=0
   "$MACLIFT" -y --dry-run --from "$T/shared.conf" </dev/null >/dev/null 2>&1 || rc=$?
   assert_equals "0" "$rc" "exit code 0"
-  assert_command_succeeds "grep -q 'brew:bat' '$CONF/selection.conf'" "imported item saved"
+  assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:bat'" "imported item saved"
   assert_command_fails "grep -q 'script:evil' '$CONF/selection.conf'" "script item dropped"
   assert_command_fails "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:ripgrep'" "selection replaced by the import"
 }
@@ -291,11 +291,15 @@ test_existing_selection_gets_new_items() {
   assert_equals "0" "$rc" "dry run exit code 0"
   assert_contains "$out" "New in maclift:" "dry run announces"
   assert_equals "$before" "$(cksum <"$CONF/selection.conf")" "dry run leaves selection.conf alone"
+  rc=0
   out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "run exit code 0"
   assert_contains "$out" "New in maclift:" "run announces"
-  assert_command_succeeds "grep -q 'script:hex' '$CONF/selection.conf'" "script:hex saved"
-  assert_command_succeeds "grep -q 'brew:bat' '$CONF/selection.conf'" "brew:bat kept"
+  assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'script:hex'" "script:hex saved"
+  assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:bat'" "brew:bat kept"
+  rc=0
   out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "second run exit code 0"
   assert_command_fails "printf '%s\\n' \"$out\" | grep -q 'New in maclift:'" "second run is quiet"
 }
 
