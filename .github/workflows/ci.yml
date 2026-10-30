@@ -4,6 +4,8 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -70,3 +72,31 @@ jobs:
           grep -F 'installed brew:cowsay' "$MACLIFT_HOME"/.config/maclift/logs/*.log
           command -v cowsay
           test -e "$MACLIFT_HOME/.gitconfig"
+
+  one-liner:
+    # The README one-liner against the published release, on a fresh runner
+    # with an empty home: download, unpack, start, full dry run. Runs when a
+    # release is published, or by hand (it then tests v$(cat VERSION), which
+    # must already be tagged and public).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: curl | bash from the public tag
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -n "$TAG" ] || TAG="v$(cat VERSION)"
+          export HOME="$RUNNER_TEMP/clean-home"
+          mkdir -p "$HOME/.config/maclift"
+          # -y needs saved answers; a first run would ask for these.
+          printf 'MACLIFT_NAME="CI Runner"\nMACLIFT_EMAIL="ci@example.com"\n' \
+            > "$HOME/.config/maclift/user.conf"
+          curl -fsSL "https://raw.githubusercontent.com/$REPO/$TAG/install" \
+            | MACLIFT_REPO="$REPO" MACLIFT_TAG="$TAG" MACLIFT_PLAIN=1 bash -s -- -y --dry-run \
+            | tee "$RUNNER_TEMP/one-liner.log"
+          grep -F 'Dry run: nothing was installed or linked' "$RUNNER_TEMP/one-liner.log"
+          test "v$(cat "$HOME/maclift/VERSION")" = "$TAG"
+          test -f "$HOME/maclift/.maclift-release"

@@ -86,6 +86,11 @@ A new release is a tagged commit on `main`. Bump `VERSION` and the
 `MACLIFT_TAG` default in `install` together, in the same commit, then tag it
 (`v1.2.3`).
 
+Publishing the GitHub release runs the `one-liner` CI job: the README
+one-liner, from that tag, on a fresh macOS runner with an empty home, as a
+dry run. You can also start it by hand (Actions → CI → Run workflow); it then
+tests `v$(cat VERSION)`.
+
 `scripts/release/build-public-tree.sh` was for the first public release
 (v1.0.0) only. Don't use it again.
 
