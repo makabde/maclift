@@ -86,7 +86,7 @@ selection_save() {
 # Items added to the catalog after 1.0.0 (asdf:python and brew:xz were removed
 # from it and are simply unknown ids now). A saved selection without
 # MACLIFT_SEEN predates them, so its baseline is every other catalog id.
-SELECTION_ADDED_SINCE_1_0="brew:pnpm brew:rebar3 script:hex script:rebar script:phx_new script:python"
+SELECTION_ADDED_SINCE_1_0="brew:pnpm script:hex script:rebar script:phx_new script:python"
 
 # Sets MACLIFT_SEEN to all current catalog ids.
 selection_mark_seen() {

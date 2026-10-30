@@ -65,7 +65,6 @@ test_seen_migration_once() {
   for i in brew:pnpm script:hex script:rebar script:phx_new script:python; do
     assert_command_succeeds "printf '%s\\n' \"$out\" | grep -qx '$i'" "offers $i"
   done
-  assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:rebar3'" "not brew:rebar3 (not default-on)"
   assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:bat'" "nothing older than 1.0.0"
   selection_save brew:git asdf:nodejs
   out="$(selection_new_defaults)"

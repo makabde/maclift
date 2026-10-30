@@ -73,8 +73,8 @@ between languages.
 
 **Q2. What does "rebar" mean here?**
 The rebar3 that Mix uses to build Erlang deps: `mix local.rebar --force`,
-on by default. A standalone `rebar3` command for pure Erlang projects is an
-extra brew item, off by default.
+on by default, installed after Erlang and Elixir. No Homebrew `rebar3`: it
+would pull Homebrew's own Erlang next to asdf's.
 
 **Q3. Where do hex, rebar and phx_new live, and why does it matter?**
 asdf-elixir's `exec-env` sets `MIX_HOME=$ASDF_INSTALL_PATH/.mix` (checked on
@@ -199,7 +199,6 @@ failure with hint `maclift -y`.
 | asdf | python | removed | was on; uv owns Python. Saved selections drop it with the skip message; installed Pythons untouched |
 | brew | uv | on | unchanged |
 | brew | pnpm | on | new |
-| brew | rebar3 | off | new, standalone Erlang build tool |
 | brew | xz | removed | was on; only for asdf Python. Stays installed as a Homebrew dependency |
 | script | hex | on | new: `mix local.hex --force` |
 | script | rebar | on | new: `mix local.rebar --force` |

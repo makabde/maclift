@@ -1,6 +1,6 @@
 # Ready-to-code Toolchains Implementation Plan
 
-> **Superseded in part:** a follow-up removed `asdf:python` and `brew:xz` from the catalog (uv owns Python outright) and made "asdf chosen" mean only a python pin in the maclift pins file or `~/.tool-versions`; so every statement below about `asdf:python` / `brew:xz` being off by default, staying ticked, or being kept in saved selections (Global Constraints, Review Focus, Tasks 4-5) is superseded: saved selections now drop both ids with the existing "skipped (not in catalog)" message. Nothing is uninstalled; xz stays as a Homebrew dependency.
+> **Superseded in part:** a follow-up removed `asdf:python` and `brew:xz` from the catalog (uv owns Python outright) and made "asdf chosen" mean only a python pin in the maclift pins file or `~/.tool-versions`; so every statement below about `asdf:python` / `brew:xz` being off by default, staying ticked, or being kept in saved selections (Global Constraints, Review Focus, Tasks 4-5) is superseded: saved selections now drop both ids with the existing "skipped (not in catalog)" message. Nothing is uninstalled; xz stays as a Homebrew dependency. The `brew:rebar3` item in Task 3 was also dropped (it pulls Homebrew's Erlang); rebar comes only from `mix local.rebar`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
