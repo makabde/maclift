@@ -30,6 +30,8 @@ setup_env() {
   export MACLIFT_HOME="$T/home" HOME="$T/realhome" MACLIFT_STUB_DIR="$T/stub"
   export PATH="$BIN:$PATH"
   export MACLIFT_BREW="$BIN/brew" MACLIFT_ASDF="$BIN/asdf" MACLIFT_GUM="$BIN/gum"
+  export MACLIFT_MIX="$PROJECT_ROOT/tests/stubs/mix" MACLIFT_ELIXIR="$PROJECT_ROOT/tests/stubs/elixir" MACLIFT_UV="$PROJECT_ROOT/tests/stubs/uv"
+  export MACLIFT_PNPM="$PROJECT_ROOT/tests/stubs/pnpm" MACLIFT_NODE="$PROJECT_ROOT/tests/stubs/node"
   export MACLIFT_UNAME="$BIN/fake-uname" MACLIFT_SW_VERS="$BIN/fake-sw_vers" MACLIFT_DF="$BIN/fake-df"
   export MACLIFT_SKIP_BOOTSTRAP=1 MACLIFT_PLAIN=1
   unset MACLIFT_DIR MACLIFT_RUN_ID MACLIFT_LOG MACLIFT_ASSUME_YES MACLIFT_ASSUME_TTY

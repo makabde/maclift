@@ -15,3 +15,7 @@ brew	unixodbc	off	ODBC library for Erlang builds
 brew	imagemagick	off	Image processing
 brew	ffmpeg	off	Video processing
 brew	vips	off	Fast image processing library
+brew	rebar3	off	Standalone rebar3 for pure Erlang projects
+script	hex	on	Hex package manager for Elixir	toolchains/hex.sh
+script	rebar	on	rebar3 for Mix to build Erlang deps	toolchains/rebar.sh
+script	phx_new	on	Phoenix project generator (mix phx.new)	toolchains/phx_new.sh
