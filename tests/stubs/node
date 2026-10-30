@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Test stub for node.
+[ -n "${MACLIFT_STUB_DIR:-}" ] && echo "$*" >>"$MACLIFT_STUB_DIR/node.calls"
+case "$1" in
+  --version) echo "v26.12.1" ;;
+  *) exit 1 ;;
+esac

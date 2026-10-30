@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Test stub for elixir. State in $MACLIFT_STUB_DIR: `no-elixir` makes
+# --version fail; `-e <code>` prints $MACLIFT_STUB_DIR/mixhome.
+[ -n "${MACLIFT_STUB_DIR:-}" ] && echo "$*" >>"$MACLIFT_STUB_DIR/elixir.calls"
+case "$1" in
+  --version)
+    [ -n "${MACLIFT_STUB_DIR:-}" ] && [ -e "$MACLIFT_STUB_DIR/no-elixir" ] && exit 1
+    echo "Elixir 1.20.0"
+    ;;
+  -e) printf '%s\n' "${MACLIFT_STUB_DIR:-/nonexistent}/mixhome" ;;
+  *) exit 1 ;;
+esac

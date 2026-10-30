@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Test stub for uv. `python install --default` creates a python in
+# $UV_PYTHON_BIN_DIR (default ~/.local/bin).
+dir="${MACLIFT_STUB_DIR:-}"
+[ -n "$dir" ] && echo "$*" >>"$dir/uv.calls"
+case "$1" in
+  --version) echo "uv 0.11.6" ;;
+  python)
+    case "$2" in
+      install)
+        [ -n "$dir" ] && : >"$dir/uv.installed"
+        case " $* " in
+          *" --default "*)
+            bin="${UV_PYTHON_BIN_DIR:-$HOME/.local/bin}"
+            mkdir -p "$bin"
+            cat >"$bin/python" <<'PY'
+#!/bin/sh
+case "$1" in
+  --version) echo "Python 3.14.0" ;;
+  -c) echo "3.14.0" ;;
+esac
+PY
+            chmod +x "$bin/python"
+            ;;
+        esac
+        ;;
+      list)
+        if [ -n "$dir" ] && [ -e "$dir/uv.installed" ]; then
+          echo "cpython-3.14.0-macos-aarch64-none"
+        fi
+        ;;
+      pin)
+        # python pin --global V
+        cfg="${XDG_CONFIG_HOME:-$HOME/.config}/uv"
+        mkdir -p "$cfg"
+        printf '%s\n' "$4" >"$cfg/.python-version"
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac

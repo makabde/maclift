@@ -14,7 +14,7 @@ done
 _MACLIFT_ROOT="$(cd "$(dirname "$_MACLIFT_SELF")" && pwd)"
 unset _l
 
-for _f in core conf catalog selection ui banner dotfiles identity asdf install preflight bootstrap migrate doctor localbrew add snapshot restore update; do
+for _f in core conf catalog selection ui banner dotfiles identity asdf toolchain install preflight bootstrap migrate doctor localbrew add snapshot restore update; do
   # shellcheck disable=SC1090
   . "$_MACLIFT_ROOT/lib/$_f.sh"
 done

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Test stub for mix. Archives are listed in $MACLIFT_STUB_DIR/mix.archives.
+dir="${MACLIFT_STUB_DIR:-}"
+[ -n "$dir" ] && echo "$*" >>"$dir/mix.calls"
+arch="${dir:-/nonexistent}/mix.archives"
+case "$1" in
+  archive)
+    [ -f "$arch" ] || exit 0
+    while IFS= read -r l || [ -n "$l" ]; do
+      [ -n "$l" ] && echo "* $l"
+    done <"$arch"
+    ;;
+  local.hex)
+    [ -n "$dir" ] && echo "hex-2.2.1" >>"$arch"
+    ;;
+  archive.install)
+    grep -q '^hex-' "$arch" 2>/dev/null || exit 1
+    [ -n "$dir" ] && echo "phx_new-1.8.1" >>"$arch"
+    ;;
+  local.rebar)
+    if [ -n "$dir" ]; then
+      mkdir -p "$dir/mixhome/elixir/1.20"
+      printf '#!/bin/sh\nexit 0\n' >"$dir/mixhome/elixir/1.20/rebar3"
+      chmod +x "$dir/mixhome/elixir/1.20/rebar3"
+    fi
+    ;;
+  phx.new)
+    grep -q '^phx_new-' "$arch" 2>/dev/null || exit 1
+    echo "Phoenix installer v1.8.1"
+    ;;
+  *) exit 1 ;;
+esac
