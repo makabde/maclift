@@ -344,7 +344,9 @@ test_next_steps_notes() {
   test_suite "notes from item scripts appear under Next steps"
   setup_env
   write_user_conf
-  printf 'MACLIFT_ITEMS="brew:git script:ssh-key"\n' >"$CONF/selection.conf"
+  # Groups as a real save writes them: no languages group, so no new language
+  # items are offered and only the ssh-key note can appear.
+  printf 'MACLIFT_GROUPS="core keys"\nMACLIFT_ITEMS="brew:git script:ssh-key"\n' >"$CONF/selection.conf"
   local rc=0 out
   out="$(MACLIFT_SSH_KEYGEN="$PROJECT_ROOT/tests/stubs/ssh-keygen" MACLIFT_SSH_ADD="$PROJECT_ROOT/tests/stubs/ssh-add" \
     MACLIFT_GH="$PROJECT_ROOT/tests/stubs/gh" MACLIFT_HAS_TTY=1 "$MACLIFT" -y </dev/null 2>&1)" || rc=$?
@@ -360,7 +362,7 @@ test_next_steps_notes() {
   # No notes: the fixed steps come right under the heading.
   setup_env
   write_user_conf
-  printf 'MACLIFT_ITEMS="brew:git"\n' >"$CONF/selection.conf"
+  printf 'MACLIFT_GROUPS="core"\nMACLIFT_ITEMS="brew:git"\n' >"$CONF/selection.conf"
   rc=0; out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
   assert_equals "0" "$rc" "no notes: exit code 0"
   assert_equals "==   • restart your terminal ==" "$(line_under_next_steps "$out")" "no notes: restart is the first step"
@@ -427,7 +429,7 @@ test_second_identity() {
   setup_env
   write_user_conf
   printf 'MACLIFT_ALT_NAME="Work User"\nMACLIFT_ALT_EMAIL="work@example.com"\nMACLIFT_ALT_DIR="~/Work/"\n' >>"$CONF/user.conf"
-  printf 'MACLIFT_ITEMS="brew:git script:second-identity"\n' >"$CONF/selection.conf"
+  printf 'MACLIFT_GROUPS="core keys"\nMACLIFT_ITEMS="brew:git script:second-identity"\n' >"$CONF/selection.conf"
   local rc=0 out
   out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
   assert_equals "0" "$rc" "exit code 0"
@@ -437,7 +439,7 @@ test_second_identity() {
   test_suite "-y without the alt values fails"
   setup_env
   write_user_conf
-  printf 'MACLIFT_ITEMS="brew:git script:second-identity"\n' >"$CONF/selection.conf"
+  printf 'MACLIFT_GROUPS="core keys"\nMACLIFT_ITEMS="brew:git script:second-identity"\n' >"$CONF/selection.conf"
   rc=0
   out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
   assert_equals "1" "$rc" "exit code 1"
