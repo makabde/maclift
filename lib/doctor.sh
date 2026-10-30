@@ -13,7 +13,7 @@
 # MACLIFT_GPG.
 
 DOCTOR_FAILS=0
-DOCTOR_CHECKS="brew path shell repo_link links asdf git ssh"
+DOCTOR_CHECKS="brew path shell repo_link links asdf toolchains git ssh"
 NL_DOCTOR='
 '
 
@@ -28,6 +28,14 @@ _doctor_fail() {
   printf '  fix: %s\n' "$2"
   DOCTOR_FAILS=$((DOCTOR_FAILS + 1))
   return 1
+}
+
+# _doctor_note <label> [hint]: an observation that is not a problem. Printed
+# with a bullet, never counted in DOCTOR_FAILS.
+_doctor_note() {
+  ui_status note "$1"
+  [ -z "${2:-}" ] || printf '  hint: %s\n' "$2"
+  return 0
 }
 
 # The user's login shell: override, else the directory service, else $SHELL.
@@ -250,6 +258,95 @@ doctor_check_asdf() {
     _doctor_ok "Language versions installed and applied"
   else
     _doctor_fail "asdf: $bad" "maclift -y"
+  fi
+}
+
+# _doctor_resolve <file>: the file's real path, following symlinks.
+_doctor_resolve() {
+  local f="$1" t i=0
+  while [ -L "$f" ] && [ "$i" -lt 20 ]; do
+    t="$(readlink "$f")"
+    case "$t" in /*) f="$t" ;; *) f="$(dirname "$f")/$t" ;; esac
+    i=$((i + 1))
+  done
+  printf '%s/%s\n' "$(maclift_real_path "$(dirname "$f")")" "$(basename "$f")"
+}
+
+# _doctor_selected <id>: true when the saved selection includes the item.
+_doctor_selected() {
+  case "$NL_DOCTOR$(selection_load)$NL_DOCTOR" in
+    *"$NL_DOCTOR$1$NL_DOCTOR"*) return 0 ;;
+  esac
+  return 1
+}
+
+# Language tools the selection asks for must actually run, the way a new
+# terminal would run them (asdf shims and ~/.local/bin first, from the home
+# folder). Runs in a subshell so doctor's own PATH and cwd stay untouched.
+# Also notes (without failing) which python answers and a second uv.
+doctor_check_toolchains() {
+  local bad=0 any=0 what="" arch="" path dir py="" seen="" real n=0 first="" second=""
+  path="$(_doctor_path 2>/dev/null)" || path="$PATH"
+
+  if _doctor_selected script:hex || _doctor_selected script:phx_new; then
+    any=1
+    if _doctor_selected script:hex; then
+      # Capture first: grep -q closing the pipe early fails under pipefail.
+      arch="$(toolchain_path_setup && toolchain_archives 2>/dev/null)" || arch=""
+      case "$arch" in *"hex-"*) ;; *) what="hex" ;; esac
+    fi
+    if _doctor_selected script:phx_new; then
+      (toolchain_path_setup && toolchain_mix phx.new --version) >/dev/null 2>&1 || what="${what:+$what, }phx_new"
+    fi
+    if [ -n "$what" ]; then
+      _doctor_fail "Elixir tools: $what missing" "maclift -y" || true
+      bad=1
+    fi
+  fi
+
+  if _doctor_selected brew:pnpm; then
+    any=1
+    if ! (toolchain_path_setup && toolchain_pnpm --version && toolchain_node --version) >/dev/null 2>&1; then
+      _doctor_fail "JavaScript tools: pnpm or node does not run" "maclift -y" || true
+      bad=1
+    fi
+  fi
+
+  if _doctor_selected script:python; then
+    any=1
+    py="$(PATH="$path" command -v python 2>/dev/null)" || py=""
+    if [ -z "$py" ] || ! (toolchain_path_setup && "$py" --version) >/dev/null 2>&1; then
+      _doctor_fail "Python: python --version fails" "maclift -y" || true
+      bad=1
+    else
+      case "$py" in
+        "$MACLIFT_HOME/.asdf/shims/"*) _doctor_note "python is $py (asdf)" ;;
+        *) _doctor_note "python is $py (uv)" ;;
+      esac
+    fi
+  fi
+
+  # Two uv binaries: walk the PATH, keep distinct real paths.
+  dir="$path:"
+  while [ -n "$dir" ]; do
+    real="${dir%%:*}"
+    dir="${dir#*:}"
+    [ -n "$real" ] && [ -x "$real/uv" ] && [ ! -d "$real/uv" ] || continue
+    real="$(_doctor_resolve "$real/uv")"
+    case "$seen" in *"|$real|"*) continue ;; esac
+    seen="$seen|$real|"
+    n=$((n + 1))
+    if [ "$n" = 1 ]; then first="$real"; elif [ "$n" = 2 ]; then second="$real"; fi
+  done
+  if [ "$n" -gt 1 ]; then
+    _doctor_note "two uv binaries on PATH: $first, $second" "rm ~/.local/bin/uv ~/.local/bin/uvx, or brew uninstall uv — keep one"
+  fi
+
+  [ "$bad" = 0 ] || return 1
+  if [ "$any" = 1 ]; then
+    _doctor_ok "Language tools ready"
+  else
+    _doctor_ok "No language tools selected"
   fi
 }
 

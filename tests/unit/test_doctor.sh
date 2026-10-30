@@ -27,6 +27,8 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/dotfiles.sh"
 # shellcheck source=lib/asdf.sh
 source "$PROJECT_ROOT/lib/asdf.sh"
+# shellcheck source=lib/toolchain.sh
+source "$PROJECT_ROOT/lib/toolchain.sh"
 # shellcheck source=lib/bootstrap.sh
 source "$PROJECT_ROOT/lib/bootstrap.sh"
 # shellcheck source=lib/doctor.sh
@@ -46,6 +48,11 @@ setup_healthy() {
   ln -s "$PROJECT_ROOT/tests/stubs/asdf" "$T/bin/asdf"
   export MACLIFT_BREW="$T/bin/brew" MACLIFT_ASDF="$T/bin/asdf"
   export MACLIFT_LOGIN_SHELL=/bin/zsh
+  # Language tools: stubs for every tool the default selection checks.
+  export MACLIFT_MIX="$PROJECT_ROOT/tests/stubs/mix" MACLIFT_PNPM="$PROJECT_ROOT/tests/stubs/pnpm" MACLIFT_NODE="$PROJECT_ROOT/tests/stubs/node"
+  printf 'hex-2.2.1\nphx_new-1.8.1\n' >"$T/stub/mix.archives"
+  printf '#!/bin/sh\necho "Python 3.13.0"\n' >"$T/bin/python"
+  chmod +x "$T/bin/python"
   export MACLIFT_DOCTOR_PATH="$T/bin:/usr/bin"
   mkdir -p "$MACLIFT_CONFIG_DIR"
   printf 'MACLIFT_NAME="Test User"\nMACLIFT_EMAIL="test@example.com"\nMACLIFT_GITHUB=""\n' >"$MACLIFT_CONFIG_DIR/user.conf"
@@ -63,7 +70,7 @@ test_healthy() {
   local out rc=0
   out="$(cmd_doctor 0 2>&1)" || rc=$?
   assert_equals "0" "$rc" "exit 0"
-  assert_contains "$out" "All 8 checks passed" "summary line"
+  assert_contains "$out" "All 9 checks passed" "summary line"
 }
 
 test_shell_bash() {
@@ -357,6 +364,61 @@ test_ssh_pub_missing() {
   assert_equals "public" "$(cat "$MACLIFT_HOME/.ssh/id_ed25519.pub")" "orphan .pub left alone"
 }
 
+test_toolchains_all_ready() {
+  test_suite "doctor: language tools ready"
+  setup_healthy
+  local out
+  DOCTOR_FAILS=0
+  out="$(doctor_check_toolchains 2>&1)" || true
+  assert_contains "$out" "Language tools ready" "ready line"
+  assert_contains "$out" "python is $T/bin/python (uv)" "python note"
+  doctor_check_toolchains >/dev/null 2>&1
+  assert_equals "0" "$DOCTOR_FAILS" "no failures"
+}
+
+test_toolchains_phx_missing() {
+  test_suite "doctor: phx_new missing"
+  setup_healthy
+  local out rc=0
+  printf 'hex-2.2.1\n' >"$T/stub/mix.archives"
+  DOCTOR_FAILS=0
+  doctor_check_toolchains >"$T/out" 2>&1 || rc=$?
+  out="$(cat "$T/out")"
+  assert_equals "1" "$rc" "returns 1"
+  assert_contains "$out" "✗ Elixir tools: phx_new missing" "cross names phx_new"
+  assert_contains "$out" "fix: maclift -y" "fix text"
+  assert_equals "1" "$DOCTOR_FAILS" "one failure"
+}
+
+test_two_uv_is_note_not_fail() {
+  test_suite "doctor: two uv binaries is a note"
+  setup_healthy
+  mkdir -p "$T/a" "$T/b"
+  printf '#!/bin/sh\n' >"$T/a/uv"
+  printf '#!/bin/sh\nexit 1\n' >"$T/b/uv"
+  chmod +x "$T/a/uv" "$T/b/uv"
+  export MACLIFT_DOCTOR_PATH="$T/a:$T/b:$T/bin:/usr/bin"
+  DOCTOR_FAILS=0
+  doctor_check_toolchains >"$T/out" 2>&1 || true
+  assert_contains "$(cat "$T/out")" "two uv binaries" "note shown"
+  assert_contains "$(cat "$T/out")" "hint: rm ~/.local/bin/uv" "hint shown"
+  assert_equals "0" "$DOCTOR_FAILS" "no failures"
+}
+
+test_note_does_not_count() {
+  test_suite "doctor: note does not count"
+  DOCTOR_FAILS=0
+  _doctor_note x "do something" >/dev/null
+  assert_equals "0" "$DOCTOR_FAILS" "unchanged"
+}
+
+test_toolchains_none_selected() {
+  test_suite "doctor: no language tools selected"
+  setup_healthy
+  conf_set "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS "script:ssh-key"
+  assert_contains "$(doctor_check_toolchains 2>&1)" "No language tools selected" "none line"
+}
+
 test_healthy
 test_shell_bash
 test_path_order
@@ -375,4 +437,9 @@ test_shell_timeout_value
 test_path_index_backslash
 test_asdf_broken_line
 test_ssh_pub_missing
+test_toolchains_all_ready
+test_toolchains_phx_missing
+test_two_uv_is_note_not_fail
+test_note_does_not_count
+test_toolchains_none_selected
 test_summary
