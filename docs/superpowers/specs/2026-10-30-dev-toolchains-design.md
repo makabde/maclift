@@ -48,7 +48,8 @@ And they **keep working** after `maclift update` moves a runtime version.
 - One failed Erlang build shows up as four unrelated red failures.
 - Two copies of a tool fighting on PATH with no warning.
 - A re-run removes or downgrades something the user already had (no
-  regressions: an existing asdf Python is never removed).
+  regressions: an existing asdf Python is never removed, and xz stays as a
+  Homebrew dependency even though `brew:xz` left the catalog).
 
 ## Decisions, as questions and answers
 
@@ -90,8 +91,11 @@ needs `xz`, and is the step that already failed on the work Mac
 - New script item `python` (uv): `uv python install --default` (latest stable,
   exposes `python`/`python3` in `~/.local/bin`), then
   `uv python pin --global <version>`. Both flags verified on uv 0.11.6.
-- `asdf:python` stays in the catalog, **off** by default. `brew:xz` goes off
-  by default (only the asdf build needs it).
+- `asdf:python` and `brew:xz` were **removed from the catalog** (follow-up
+  decision: uv owns Python outright). A saved selection that still lists them
+  drops them on load with the existing "maclift: skipped <id> (not in
+  catalog)" message, and the next save omits them. Nothing is uninstalled:
+  `xz` stays on the Mac as a Homebrew dependency.
 - Existing asdf Python installs and pins are left untouched. If both an asdf
   pin and the uv Python exist, doctor reports which one `python` resolves to.
 - uv itself stays a brew item, so `brew upgrade` keeps it current.
@@ -152,14 +156,16 @@ without this both existing Macs would never get the toolchains and doctor's
   rebar, phx_new, pnpm, python (uv). Untick them in the picker if you don't
   want them."). Then all current ids are marked seen. A first-ever save marks
   everything seen, so fresh Macs are unaffected.
-- Default changes never remove anything from a saved selection: `asdf:python`
-  and `brew:xz` stay ticked where they were ticked. Only fresh selections get
-  the new off defaults. (No-regression rule.)
+- Default changes never untick anything in a saved selection. The one
+  exception is removed ids: `asdf:python` and `brew:xz` left the catalog, so
+  saved selections drop them with the skip message (see Q4); no installed
+  software is removed. (No-regression rule.)
 - This is a separate step from `lib/migrate.sh`, which handles dotfiles links.
 
 **Q13. What does `script:python` do when asdf Python is already there? (author's call)**
-"The user chose asdf" means: `asdf:python` is in the selection **or** a
-python line exists in the pins file. In that case `script:python --check`
+"The user chose asdf" means: a python line exists in the maclift pins file
+**or** in `~/.tool-versions` (someone managing Python with asdf by hand);
+there is no `asdf:python` catalog item any more. In that case `script:python --check`
 passes when `python --version` works through asdf, and the script installs a
 uv Python for uv's own use (`uv python install`) but does **not** pass
 `--default` and does **not** pin globally, so nothing competes for `python`.
@@ -190,11 +196,11 @@ failure with hint `maclift -y`.
 | asdf | erlang | on | unchanged |
 | asdf | elixir | on | unchanged |
 | asdf | nodejs | on | unchanged |
-| asdf | python | **off** | was on; uv owns Python |
+| asdf | python | removed | was on; uv owns Python. Saved selections drop it with the skip message; installed Pythons untouched |
 | brew | uv | on | unchanged |
 | brew | pnpm | on | new |
 | brew | rebar3 | off | new, standalone Erlang build tool |
-| brew | xz | **off** | was on; only for asdf Python |
+| brew | xz | removed | was on; only for asdf Python. Stays installed as a Homebrew dependency |
 | script | hex | on | new: `mix local.hex --force` |
 | script | rebar | on | new: `mix local.rebar --force` |
 | script | phx_new | on | new: `mix archive.install hex phx_new --force` |

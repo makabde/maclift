@@ -50,6 +50,7 @@ test_new_defaults() {
     assert_command_succeeds "printf '%s\\n' \"$d\" | grep -qx '$i'" "defaults contain $i"
   done
   for i in asdf:python brew:xz; do
+    assert_command_fails "catalog_table | cut -f2 | grep -qx '$i'" "$i is no longer in the catalog"
     assert_command_fails "printf '%s\\n' \"$d\" | grep -qx '$i'" "defaults exclude $i"
   done
 }
@@ -66,16 +67,15 @@ test_seen_migration_once() {
   done
   assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:rebar3'" "not brew:rebar3 (not default-on)"
   assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:bat'" "nothing older than 1.0.0"
-  selection_save brew:git asdf:python brew:xz
+  selection_save brew:git asdf:nodejs
   out="$(selection_new_defaults)"
   assert_command_succeeds "printf '%s\\n' \"$out\" | grep -qx 'script:hex'" "selection_save alone leaves the offer pending"
   # shellcheck disable=SC2046
-  selection_save brew:git asdf:python brew:xz $(selection_new_defaults)
+  selection_save brew:git asdf:nodejs $(selection_new_defaults)
   selection_mark_seen
   assert_equals "" "$(selection_new_defaults)" "nothing offered after saving"
   items="$(conf_get "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS)"
-  assert_contains "$items" "asdf:python" "asdf:python kept"
-  assert_contains "$items" "brew:xz" "brew:xz kept"
+  assert_command_fails "printf '%s\\n' \"$items\" | grep -Eq 'asdf:python|brew:xz'" "removed ids are not saved"
   assert_contains "$items" "script:hex" "script:hex added"
 }
 

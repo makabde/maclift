@@ -6,10 +6,8 @@
 asdf	erlang	on	Erlang/OTP runtime	https://github.com/asdf-vm/asdf-erlang.git
 asdf	elixir	on	Elixir language	https://github.com/asdf-vm/asdf-elixir.git
 asdf	nodejs	on	Node.js runtime	https://github.com/asdf-vm/asdf-nodejs.git
-asdf	python	off	Python interpreter	https://github.com/asdf-community/asdf-python.git
 brew	uv	on	Fast Python package manager
 brew	pnpm	on	Fast JavaScript package manager
-brew	xz	off	Compression library, only needed to build Python with asdf
 brew	wxwidgets	off	GUI toolkit for Erlang observer
 brew	libxslt	off	XSLT library for Phoenix builds
 brew	unixodbc	off	ODBC library for Erlang builds

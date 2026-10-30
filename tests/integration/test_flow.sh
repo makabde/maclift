@@ -304,6 +304,26 @@ test_existing_selection_gets_new_items() {
   assert_command_fails "printf '%s\\n' \"$out\" | grep -q 'New in maclift:'" "second run is quiet"
 }
 
+test_removed_ids_dropped() {
+  test_suite "a 1.0.0 selection with asdf:python and brew:xz drops them"
+  setup_env
+  write_user_conf
+  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="brew:git brew:bat asdf:python brew:xz"\n' >"$CONF/selection.conf"
+  local out rc=0 items
+  out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "run exit code 0"
+  assert_contains "$out" "maclift: skipped asdf:python (not in catalog)" "skip message for asdf:python"
+  assert_contains "$out" "maclift: skipped brew:xz (not in catalog)" "skip message for brew:xz"
+  items="$(grep '^MACLIFT_ITEMS=' "$CONF/selection.conf")"
+  assert_contains "$items" "brew:bat" "other items kept"
+  assert_command_fails "printf '%s\\n' \"$items\" | grep -Eq 'asdf:python|brew:xz'" "saved MACLIFT_ITEMS has neither"
+  assert_command_fails "grep -q 'python' '$MACLIFT_STUB_DIR/asdf.calls'" "no asdf python install attempted"
+  assert_command_fails "grep -q 'xz' '$MACLIFT_STUB_DIR/brew.calls'" "no brew xz install attempted"
+  rc=0
+  out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_command_fails "printf '%s\\n' \"$out\" | grep -q 'not in catalog'" "second run is quiet"
+}
+
 test_sandbox_note() {
   test_suite "sandbox note when MACLIFT_HOME is not HOME"
   setup_env
@@ -437,6 +457,7 @@ test_extras_and_failures
 test_yes_installs_required
 test_existing_selection_gets_new_items
 test_no_escapes_when_piped
+test_removed_ids_dropped
 test_sandbox_note
 test_next_steps_notes
 test_interrupt

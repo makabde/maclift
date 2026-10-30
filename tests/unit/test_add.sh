@@ -121,7 +121,7 @@ test_cmd_add_leaves_offer_pending() {
   test_suite "cmd_add does not mark the new-defaults offer as seen"
   reset_stub
   rm -f "$MACLIFT_CONFIG_DIR/selection.conf"
-  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="brew:git asdf:python"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
+  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="brew:git asdf:nodejs"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
   cmd_add 0 bat >/dev/null 2>&1
   assert_contains "$(selection_load)" "brew:bat" "bat saved"
   assert_contains "$(selection_new_defaults)" "script:hex" "offer still pending"

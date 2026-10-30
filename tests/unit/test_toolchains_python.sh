@@ -58,9 +58,9 @@ test_python_uv_mode() {
 }
 
 test_python_asdf_mode() {
-  test_suite "python.sh asdf mode (selection)"
+  test_suite "python.sh asdf mode (~/.tool-versions)"
   fresh_env
-  conf_set "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS "asdf:python script:python"
+  echo "python 3.13.5" >"$MACLIFT_HOME/.tool-versions"
   run_item python.sh --check
   assert_equals "1" "$RC" "check fails before"
   run_item python.sh

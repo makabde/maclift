@@ -4,7 +4,7 @@
 #   python.sh --check   exit 0 when the Python for the chosen mode is in place
 #   python.sh           install it; exit 3 (skipped) when uv is missing
 # uv mode (default): uv python install --default, then pin that version
-# globally. asdf mode (asdf:python selected or python pinned): only install a
+# globally. asdf mode (python in the maclift pins or ~/.tool-versions): only install a
 # uv Python for uv's own use; the asdf Python is never touched.
 # Test overrides: MACLIFT_UV.
 

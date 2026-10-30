@@ -83,7 +83,8 @@ selection_save() {
   conf_set "$(_selection_file)" MACLIFT_ITEMS "$items" || return 1
 }
 
-# Items added to the catalog after 1.0.0. A saved selection without
+# Items added to the catalog after 1.0.0 (asdf:python and brew:xz were removed
+# from it and are simply unknown ids now). A saved selection without
 # MACLIFT_SEEN predates them, so its baseline is every other catalog id.
 SELECTION_ADDED_SINCE_1_0="brew:pnpm brew:rebar3 script:hex script:rebar script:phx_new script:python"
 

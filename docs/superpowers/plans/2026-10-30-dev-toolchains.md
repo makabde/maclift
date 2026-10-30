@@ -1,5 +1,7 @@
 # Ready-to-code Toolchains Implementation Plan
 
+> **Superseded in part:** a follow-up removed `asdf:python` and `brew:xz` from the catalog (uv owns Python outright) and made "asdf chosen" mean only a python pin in the maclift pins file or `~/.tool-versions`; the off-by-default wording below is historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** After `maclift install`, `mix phx.new`, `pnpm create vite` and `uv init` work in a new terminal, and keep working after `maclift update`.
