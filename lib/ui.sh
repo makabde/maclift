@@ -157,15 +157,16 @@ ui_box() {
   for t in "$@"; do printf '== %s ==\n' "$t"; done
 }
 
-# ui_status <run|ok|skip|fail> <label> [seconds]
+# ui_status <run|ok|skip|fail|need> <label> [seconds | reason for need]
 ui_status() {
   local state="$1" label="$2" secs="${3:-}" suffix="" c r
   r="$(_ui_reset)"
-  [ -z "$secs" ] || suffix=" (${secs}s)"
+  [ "$state" = need ] || [ -z "$secs" ] || suffix=" (${secs}s)"
   case "$state" in
     run) printf '%s⠋ %s%s\n' "$(ui_color 249 226 175)" "$label" "$r" ;;
     ok) printf '%s✓%s %s%s\n' "$(ui_color 166 227 161)" "$r" "$label" "$suffix" ;;
     skip) printf '%s✓ already installed%s %s\n' "$(ui_color 166 227 161)" "$r" "$label" ;;
+    need) printf '%s– skipped %s (needs %s)%s\n' "$(ui_color 249 226 175)" "$label" "$secs" "$r" ;;
     fail) c="$(ui_color 243 139 168)"; printf '%s✗%s %s%s\n' "$c" "$r" "$label" "$suffix" ;;
     *) printf '%s\n' "$label" ;;
   esac

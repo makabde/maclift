@@ -61,6 +61,7 @@ test_display() {
   assert_contains "$s" "bat" "status ok has label"
   assert_contains "$(ui_status fail bat)" "✗" "status fail"
   assert_contains "$(ui_status skip bat)" "already installed" "status skip"
+  assert_contains "$(ui_status need script:hex elixir)" "skipped script:hex (needs elixir)" "status need"
   assert_contains "$(ui_box hello)" "== hello ==" "plain box"
 }
 

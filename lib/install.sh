@@ -8,6 +8,11 @@
 
 # Space-separated ids that failed in the last install_run (plain string).
 MACLIFT_FAILED=""
+# Space-separated "id:reason" pairs for items skipped because a runtime they
+# need is missing (script exit 3) in the last install_run.
+MACLIFT_NEEDS=""
+# Set by install_item when it returns 3: the missing thing's name.
+MACLIFT_NEED_REASON=""
 
 # Session extras from Brewfile.local (not in the catalog).
 # MACLIFT_EXTRA_IDS: one id per line. MACLIFT_EXTRA_NAMES: "id<TAB>name" lines.
@@ -92,7 +97,8 @@ _install_item_body() {
     dotfiles) dotfiles_link_item "$id" 0 ;;
     script)
       [ -n "$args" ] || { echo "no script given for $id"; return 1; }
-      bash "$MACLIFT_DIR/scripts/items/$args"
+      # Exit 3 means "needs a runtime"; the script names it in $MACLIFT_NEED_FILE.
+      MACLIFT_NEED_FILE="${MACLIFT_NEED_FILE:-}" bash "$MACLIFT_DIR/scripts/items/$args"
       ;;
     *) echo "unknown item kind: $kind"; return 1 ;;
   esac
@@ -100,9 +106,19 @@ _install_item_body() {
 
 # install_item <id>: installs one item; all output goes to the log.
 install_item() {
-  local rc=0
+  local rc=0 need_file
+  need_file="$(mktemp "${TMPDIR:-/tmp}/maclift-need.XXXXXX")"
+  MACLIFT_NEED_REASON=""
   log_line "installing $1"
-  _install_item_body "$1" >>"${MACLIFT_LOG:-/dev/null}" 2>&1 || rc=$?
+  MACLIFT_NEED_FILE="$need_file" _install_item_body "$1" >>"${MACLIFT_LOG:-/dev/null}" 2>&1 || rc=$?
+  if [ "$rc" -eq 3 ]; then
+    MACLIFT_NEED_REASON="$(head -n 1 "$need_file" 2>/dev/null | tr -d '[:space:]')"
+    rm -f "$need_file"
+    [ -n "$MACLIFT_NEED_REASON" ] || MACLIFT_NEED_REASON="a runtime"
+    log_line "SKIPPED $1 (needs $MACLIFT_NEED_REASON)"
+    return 3
+  fi
+  rm -f "$need_file"
   if [ "$rc" -ne 0 ]; then
     log_line "FAILED $1 (exit $rc)"
     return 1
@@ -123,6 +139,32 @@ install_notes() {
   return 0
 }
 
+# _install_kind_ids <kind> <id>...: the ids of that kind, one per line. Script
+# ids come in catalog order (the ones not in the catalog follow, as given);
+# every other kind keeps the given order.
+_install_kind_ids() {
+  local kind="$1" id cat_id
+  shift
+  if [ "$kind" != script ]; then
+    for id in "$@"; do
+      [ "$(_install_kind "$id")" = "$kind" ] && printf '%s\n' "$id"
+    done
+    return 0
+  fi
+  while IFS= read -r cat_id; do
+    for id in "$@"; do
+      [ "$id" = "$cat_id" ] && { printf '%s\n' "$id"; break; }
+    done
+  done <<EOT
+$(catalog_table | awk -F'\t' '$2 ~ /^script:/ { print $2 }')
+EOT
+  for id in "$@"; do
+    [ "$(_install_kind "$id")" = script ] || continue
+    catalog_table | awk -F'\t' -v id="$id" '$2 == id { f = 1 } END { exit !f }' || printf '%s\n' "$id"
+  done
+  return 0
+}
+
 # install_run <dry_run:0|1> <id>...
 install_run() {
   local dry="${1:-0}" ordered="" kind id total=0 n=0 asdf_plugins="" start secs label rc=0
@@ -134,10 +176,10 @@ install_run() {
   MACLIFT_NOTES="$MACLIFT_CONFIG_DIR/logs/$MACLIFT_RUN_ID.notes"
   export MACLIFT_LOG MACLIFT_NOTES
   MACLIFT_FAILED=""
+  MACLIFT_NEEDS=""
 
   for kind in brew cask mas asdf dotfiles script; do
-    for id in "$@"; do
-      [ "$(_install_kind "$id")" = "$kind" ] || continue
+    for id in $(_install_kind_ids "$kind" "$@"); do
       ordered="$ordered$id
 "
       total=$((total + 1))
@@ -183,10 +225,13 @@ install_run() {
     fi
     ui_status run "$label"
     start="$(date +%s)"
-    if install_item "$id"; then rc=0; else rc=1; fi
+    install_item "$id" && rc=0 || rc=$?
     secs=$(($(date +%s) - start))
     if [ "$rc" -eq 0 ]; then
       ui_status ok "$label" "$secs"
+    elif [ "$rc" -eq 3 ]; then
+      ui_status need "$label" "$MACLIFT_NEED_REASON"
+      MACLIFT_NEEDS="${MACLIFT_NEEDS:+$MACLIFT_NEEDS }$id:$MACLIFT_NEED_REASON"
     else
       ui_status fail "$label" "$secs"
       MACLIFT_FAILED="${MACLIFT_FAILED:+$MACLIFT_FAILED }$id"

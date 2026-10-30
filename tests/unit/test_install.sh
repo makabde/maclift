@@ -215,7 +215,51 @@ test_notes() {
   unset MACLIFT_NOTES
 }
 
+# fake_script_dir: prints a temp MACLIFT_DIR whose catalog has script items
+# a, b (a first) and x. a and b append their name to $MACLIFT_STUB_DIR/order;
+# x reports that it needs elixir.
+fake_script_dir() {
+  local d
+  d="$(mktemp -d)"
+  mkdir -p "$d/catalog" "$d/scripts/items"
+  printf '@id x\n@title X\n@description X\n@default off\n@required off\n' >"$d/catalog/50-x.tsv"
+  printf 'script\ta\toff\tItem a\ta.sh\nscript\tb\toff\tItem b\tb.sh\nscript\tx\toff\tItem x\tx.sh\n' >>"$d/catalog/50-x.tsv"
+  printf '#!/usr/bin/env bash\n[ "$1" = --check ] && exit 1\necho a >>"$MACLIFT_STUB_DIR/order"\n' >"$d/scripts/items/a.sh"
+  printf '#!/usr/bin/env bash\n[ "$1" = --check ] && exit 1\necho b >>"$MACLIFT_STUB_DIR/order"\n' >"$d/scripts/items/b.sh"
+  printf '#!/usr/bin/env bash\n[ "$1" = --check ] && exit 1\necho elixir >"$MACLIFT_NEED_FILE"\nexit 3\n' >"$d/scripts/items/x.sh"
+  printf '%s\n' "$d"
+}
+
+test_needs_skip_not_failed() {
+  test_suite "needs-skip is not a failure"
+  fresh_home
+  local d rc=0 saved="$MACLIFT_DIR"
+  d="$(fake_script_dir)"
+  MACLIFT_DIR="$d"
+  install_run 0 script:x >"$MACLIFT_STUB_DIR/out" 2>&1 || rc=$?
+  MACLIFT_DIR="$saved"
+  assert_equals "0" "$rc" "install_run returns 0"
+  assert_command_succeeds "grep -q 'skipped script:x (needs elixir)' '$MACLIFT_STUB_DIR/out'" "skip line shown"
+  assert_command_fails "grep -q '✗' '$MACLIFT_STUB_DIR/out'" "no fail line"
+  assert_equals "" "$MACLIFT_FAILED" "not failed"
+  assert_equals "script:x:elixir" "$MACLIFT_NEEDS" "needs recorded"
+  assert_command_succeeds "grep -q 'SKIPPED script:x (needs elixir)' '$MACLIFT_CONFIG_DIR/logs/$MACLIFT_RUN_ID.log'" "log has skip"
+}
+
+test_script_catalog_order() {
+  test_suite "scripts run in catalog order"
+  fresh_home
+  local d saved="$MACLIFT_DIR"
+  d="$(fake_script_dir)"
+  MACLIFT_DIR="$d"
+  install_run 0 script:b script:a >/dev/null 2>&1 || true
+  MACLIFT_DIR="$saved"
+  assert_equals "a b" "$(tr '\n' ' ' <"$MACLIFT_STUB_DIR/order" | sed 's/ $//')" "a then b"
+}
+
 test_failure_continues
+test_needs_skip_not_failed
+test_script_catalog_order
 test_skip_if_app
 test_notes
 test_asdf_fresh_mac

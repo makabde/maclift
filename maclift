@@ -608,6 +608,9 @@ if [ "$DRY_RUN" = "1" ]; then
 else
   _box+=("Installed: $_installed · skipped: $_skipped · failed: $_failed")
 fi
+for _id in $MACLIFT_NEEDS; do
+  _box+=("– ${_id%:*} skipped (needs ${_id##*:})")
+done
 for _id in $MACLIFT_FAILED; do
   _box+=("✗ $_id")
   while IFS= read -r _l; do
