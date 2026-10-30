@@ -78,7 +78,42 @@ selection_save() {
   done
   groups="${groups# }"
   conf_set "$(_selection_file)" MACLIFT_GROUPS "$groups" || return 1
-  conf_set "$(_selection_file)" MACLIFT_ITEMS "$items"
+  conf_set "$(_selection_file)" MACLIFT_ITEMS "$items" || return 1
+  selection_mark_seen
+}
+
+# Items added to the catalog after 1.0.0. A saved selection without
+# MACLIFT_SEEN predates them, so its baseline is every other catalog id.
+SELECTION_ADDED_SINCE_1_0="brew:pnpm brew:rebar3 script:hex script:rebar script:phx_new script:python"
+
+# Sets MACLIFT_SEEN to all current catalog ids.
+selection_mark_seen() {
+  local ids
+  ids="$(catalog_table | cut -f2 | tr '\n' ' ')"
+  conf_set "$(_selection_file)" MACLIFT_SEEN "${ids% }"
+}
+
+# Prints default-on ids a saved selection has not been offered yet (nothing
+# when no selection is saved). Only ids in the current catalog.
+selection_new_defaults() {
+  local saved seen id
+  saved="$(conf_get "$(_selection_file)" MACLIFT_ITEMS 2>/dev/null)" || return 0
+  if seen="$(conf_get "$(_selection_file)" MACLIFT_SEEN 2>/dev/null)"; then
+    :
+  else
+    seen="$(catalog_table | cut -f2 | tr '\n' ' ')"
+    for id in $SELECTION_ADDED_SINCE_1_0; do
+      seen=" $seen "
+      seen="${seen/ $id / }"
+    done
+  fi
+  seen=" $seen "
+  saved=" $saved "
+  for id in $(selection_defaults); do
+    case "$seen" in *" $id "*) continue ;; esac
+    case "$saved" in *" $id "*) continue ;; esac
+    printf '%s\n' "$id"
+  done
 }
 
 # selection_import <path|url>: loads a shared selection file safely.

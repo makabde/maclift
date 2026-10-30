@@ -340,6 +340,22 @@ while IFS= read -r _id; do
 done <<EOT
 $(selection_load)
 EOT
+
+# Default-on items added to the catalog since this selection was saved: offer
+# them once, never untick anything.
+_new="$(selection_new_defaults)"
+if [ -n "$_new" ]; then
+  _new_list=""
+  for _id in $_new; do
+    SELECTED="$SELECTED$_id$NL"
+    _new_list="$_new_list${_new_list:+, }$_id"
+  done
+  echo "New in maclift: $_new_list. Untick them in the picker if you don't want them."
+  if [ "$ASSUME_YES" = "1" ] && [ "$DRY_RUN" != "1" ]; then
+    # shellcheck disable=SC2046
+    selection_save $(printf '%s\n' "$SELECTED") || die "could not save your selection"
+  fi
+fi
 EXTRAS="$MACLIFT_EXTRA_IDS"
 
 # ---- 9-13: groups, fine-tune, extras, save, review ----

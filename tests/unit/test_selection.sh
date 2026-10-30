@@ -54,6 +54,42 @@ test_new_defaults() {
   done
 }
 
+test_seen_migration_once() {
+  test_suite "new default-on items are offered once to a 1.0.0 selection"
+  local i out items
+  rm -rf "$MACLIFT_HOME/.config"
+  mkdir -p "$MACLIFT_CONFIG_DIR"
+  printf 'MACLIFT_GROUPS="cli"\nMACLIFT_ITEMS="brew:git asdf:python brew:xz"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
+  out="$(selection_new_defaults)"
+  for i in brew:pnpm script:hex script:rebar script:phx_new script:python; do
+    assert_command_succeeds "printf '%s\\n' \"$out\" | grep -qx '$i'" "offers $i"
+  done
+  assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:rebar3'" "not brew:rebar3 (not default-on)"
+  assert_command_fails "printf '%s\\n' \"$out\" | grep -qx 'brew:bat'" "nothing older than 1.0.0"
+  # shellcheck disable=SC2046
+  selection_save brew:git asdf:python brew:xz $(selection_new_defaults)
+  assert_equals "" "$(selection_new_defaults)" "nothing offered after saving"
+  items="$(conf_get "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS)"
+  assert_contains "$items" "asdf:python" "asdf:python kept"
+  assert_contains "$items" "brew:xz" "brew:xz kept"
+  assert_contains "$items" "script:hex" "script:hex added"
+}
+
+test_no_offer_on_fresh_mac() {
+  test_suite "no offer without a saved selection"
+  rm -rf "$MACLIFT_HOME/.config"
+  assert_equals "" "$(selection_new_defaults)" "prints nothing"
+}
+
+test_unticked_stays_unticked() {
+  test_suite "an unticked new item stays unticked"
+  rm -rf "$MACLIFT_HOME/.config"
+  mkdir -p "$MACLIFT_CONFIG_DIR"
+  printf 'MACLIFT_ITEMS="brew:git"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
+  selection_save brew:git brew:pnpm
+  assert_equals "" "$(selection_new_defaults)" "script:hex not offered again"
+}
+
 test_save_load() {
   test_suite "selection_save / selection_load"
   local core out
@@ -118,6 +154,9 @@ STUB
 
 test_defaults
 test_new_defaults
+test_seen_migration_once
+test_no_offer_on_fresh_mac
+test_unticked_stays_unticked
 test_save_load
 test_load_required
 test_import

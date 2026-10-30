@@ -187,7 +187,7 @@ test_fine_tune_and_save() {
     printf '3\n'
   } | "$MACLIFT" >/dev/null 2>&1 || rc=$?
   assert_equals "0" "$rc" "exit code 0"
-  assert_command_fails "grep -q '$first' '$CONF/selection.conf'" "$first unticked"
+  assert_command_fails "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q '$first'" "$first unticked"
   assert_command_succeeds "grep -q 'brew:git' '$CONF/selection.conf'" "required item kept"
   assert_command_fails "grep -q '^install' '$MACLIFT_STUB_DIR/brew.calls'" "nothing installed"
   assert_command_fails "[ -e '$MACLIFT_HOME/.zshrc' ]" "nothing linked"
@@ -204,7 +204,7 @@ test_fine_tune_and_save() {
     printf '3\n'
   } | "$MACLIFT" 2>&1)" || rc=$?
   assert_equals "0" "$rc" "exit code 0"
-  assert_command_fails "grep -q '$first' '$CONF/selection.conf'" "$first still unticked after Back"
+  assert_command_fails "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q '$first'" "$first still unticked after Back"
   assert_equals "2" "$(printf '%s\n' "$out" | grep -c 'Your choices')" "review shown twice"
 
   test_suite "Back keeps an unticked Brewfile.local extra unticked"
@@ -238,7 +238,7 @@ test_from() {
   assert_equals "0" "$rc" "exit code 0"
   assert_command_succeeds "grep -q 'brew:bat' '$CONF/selection.conf'" "imported item saved"
   assert_command_fails "grep -q 'script:evil' '$CONF/selection.conf'" "script item dropped"
-  assert_command_fails "grep -q 'brew:ripgrep' '$CONF/selection.conf'" "selection replaced by the import"
+  assert_command_fails "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:ripgrep'" "selection replaced by the import"
 }
 
 test_extras_and_failures() {
@@ -278,6 +278,25 @@ test_yes_installs_required() {
   assert_equals "0" "$rc" "exit code 0"
   assert_command_succeeds "grep -q '^install -- bat' '$MACLIFT_STUB_DIR/brew.calls'" "bat installed"
   assert_command_succeeds "grep -q '^install -- git' '$MACLIFT_STUB_DIR/brew.calls'" "core item git installed"
+}
+
+test_existing_selection_gets_new_items() {
+  test_suite "a 1.0.0 selection is offered new default-on items once"
+  setup_env
+  write_user_conf
+  printf 'MACLIFT_GROUPS="cli"\nMACLIFT_ITEMS="brew:git brew:bat"\n' >"$CONF/selection.conf"
+  local before out rc=0
+  before="$(cksum <"$CONF/selection.conf")"
+  out="$("$MACLIFT" -y --dry-run </dev/null 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "dry run exit code 0"
+  assert_contains "$out" "New in maclift:" "dry run announces"
+  assert_equals "$before" "$(cksum <"$CONF/selection.conf")" "dry run leaves selection.conf alone"
+  out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_contains "$out" "New in maclift:" "run announces"
+  assert_command_succeeds "grep -q 'script:hex' '$CONF/selection.conf'" "script:hex saved"
+  assert_command_succeeds "grep -q 'brew:bat' '$CONF/selection.conf'" "brew:bat kept"
+  out="$("$MACLIFT" -y </dev/null 2>&1)" || rc=$?
+  assert_command_fails "printf '%s\\n' \"$out\" | grep -q 'New in maclift:'" "second run is quiet"
 }
 
 test_sandbox_note() {
@@ -411,6 +430,7 @@ test_from
 test_no_old_repo_paths
 test_extras_and_failures
 test_yes_installs_required
+test_existing_selection_gets_new_items
 test_no_escapes_when_piped
 test_sandbox_note
 test_next_steps_notes
