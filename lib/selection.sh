@@ -57,7 +57,9 @@ selection_load() {
   fi
 }
 
-# selection_save <ids...>: adds required items, writes groups and items.
+# selection_save <ids...>: adds required items, writes groups and items. It
+# does not touch MACLIFT_SEEN: only the main flow and selection_import, which
+# show the user the whole catalog, call selection_mark_seen after saving.
 selection_save() {
   local id g items="" groups="" seen=" "
   for id in "$@" $(_selection_required); do
@@ -79,7 +81,6 @@ selection_save() {
   groups="${groups# }"
   conf_set "$(_selection_file)" MACLIFT_GROUPS "$groups" || return 1
   conf_set "$(_selection_file)" MACLIFT_ITEMS "$items" || return 1
-  selection_mark_seen
 }
 
 # Items added to the catalog after 1.0.0. A saved selection without
@@ -96,7 +97,7 @@ selection_mark_seen() {
 # Prints default-on ids a saved selection has not been offered yet (nothing
 # when no selection is saved). Only ids in the current catalog.
 selection_new_defaults() {
-  local saved seen id
+  local saved seen id groups="" g
   saved="$(conf_get "$(_selection_file)" MACLIFT_ITEMS 2>/dev/null)" || return 0
   if seen="$(conf_get "$(_selection_file)" MACLIFT_SEEN 2>/dev/null)"; then
     :
@@ -109,7 +110,13 @@ selection_new_defaults() {
   fi
   seen=" $seen "
   saved=" $saved "
+  # A group switched off as a whole stays off.
+  groups="$(conf_get "$(_selection_file)" MACLIFT_GROUPS 2>/dev/null)" && groups=" $groups " || groups=""
   for id in $(selection_defaults); do
+    if [ -n "$groups" ]; then
+      g="$(catalog_item_field "$id" group 2>/dev/null)" || g=""
+      case "$groups" in *" $g "*) ;; *) continue ;; esac
+    fi
     case "$seen" in *" $id "*) continue ;; esac
     case "$saved" in *" $id "*) continue ;; esac
     printf '%s\n' "$id"
@@ -155,5 +162,6 @@ selection_import() {
     esac
   done
   # shellcheck disable=SC2086
-  selection_save $keep
+  selection_save $keep || return 1
+  selection_mark_seen
 }

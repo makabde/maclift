@@ -16,15 +16,13 @@ source "$MACLIFT_DIR/lib/toolchain.sh"
 maclift_init_paths
 toolchain_path_setup
 
-has_archive() { toolchain_archives 2>/dev/null | grep -q "$1-"; }
-
 if [ "${1:-}" = "--check" ]; then
-  has_archive phx_new
+  toolchain_has_archive phx_new
   exit $?
 fi
 
 toolchain_needs elixir toolchain_elixir --version
-toolchain_needs hex has_archive hex
+toolchain_needs hex toolchain_has_archive hex
 toolchain_mix archive.install hex phx_new --force
 
 if ! command -v docker >/dev/null 2>&1 && ! command -v psql >/dev/null 2>&1; then

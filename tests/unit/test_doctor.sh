@@ -371,7 +371,13 @@ test_toolchains_all_ready() {
   DOCTOR_FAILS=0
   out="$(doctor_check_toolchains 2>&1)" || true
   assert_contains "$out" "Language tools ready" "ready line"
-  assert_contains "$out" "python is $T/bin/python (uv)" "python note"
+  assert_contains "$out" "python is $T/bin/python (other)" "python outside uv and asdf dirs is other"
+  UV_PYTHON_BIN_DIR="$T/bin" out="$(doctor_check_toolchains 2>&1)" || true
+  assert_contains "$out" "python is $T/bin/python (uv)" "python in uv's bin dir"
+  mkdir -p "$T/shims"
+  cp "$T/bin/python" "$T/shims/python"
+  ASDF_DATA_DIR="$T" UV_PYTHON_BIN_DIR="$T/nowhere" out="$(MACLIFT_DOCTOR_PATH="$T/shims:/usr/bin" doctor_check_toolchains 2>&1)" || true
+  assert_contains "$out" "python is $T/shims/python (asdf)" "python under the asdf shims"
   doctor_check_toolchains >/dev/null 2>&1
   assert_equals "0" "$DOCTOR_FAILS" "no failures"
 }
@@ -416,7 +422,20 @@ test_toolchains_none_selected() {
   test_suite "doctor: no language tools selected"
   setup_healthy
   conf_set "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS "script:ssh-key"
-  assert_contains "$(doctor_check_toolchains 2>&1)" "No language tools selected" "none line"
+  printf 'MACLIFT_GROUPS="cli"\nMACLIFT_ITEMS="script:ssh-key"\nMACLIFT_SEEN="%s"\n' "$(catalog_table | cut -f2 | tr '\n' ' ')" >"$MACLIFT_CONFIG_DIR/selection.conf"
+  assert_contains "$(doctor_check_toolchains 2>&1)" "No language tools selected" "none line when nothing is pending"
+}
+
+test_toolchains_not_selected_yet() {
+  test_suite "doctor: language tools offered but not selected yet"
+  setup_healthy
+  local out
+  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="script:ssh-key"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
+  DOCTOR_FAILS=0
+  out="$(doctor_check_toolchains 2>&1)" || true
+  assert_contains "$out" "Language tools not selected yet; run maclift -y to add them" "pending offer note"
+  doctor_check_toolchains >/dev/null 2>&1 || true
+  assert_equals "0" "$DOCTOR_FAILS" "not a failure"
 }
 
 test_healthy
@@ -442,4 +461,5 @@ test_toolchains_phx_missing
 test_two_uv_is_note_not_fail
 test_note_does_not_count
 test_toolchains_none_selected
+test_toolchains_not_selected_yet
 test_summary

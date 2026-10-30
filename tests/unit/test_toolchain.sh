@@ -47,6 +47,29 @@ test_needs_writes_reason() {
   assert_command_fails "[ -e '$t/need2' ]" "no need file on success"
 }
 
+test_has_archive() {
+  test_suite "toolchain_has_archive"
+  local t
+  t="$(mktemp -d)"
+  printf '#!/bin/sh\nprintf "Archives available in x:\\n* hex-2.2.1\\n* myhex-1.0\\n"\n' >"$t/mix"
+  chmod +x "$t/mix"
+  (
+    set -o pipefail
+    export MACLIFT_MIX="$t/mix"
+    toolchain_has_archive hex && echo hex-yes
+    toolchain_has_archive hex2 || echo hex2-no
+  ) >"$t/out"
+  assert_contains "$(cat "$t/out")" "hex-yes" "matches '* hex-2.2.1'"
+  assert_contains "$(cat "$t/out")" "hex2-no" "no prefix match on a different name"
+  printf '#!/bin/sh\nprintf "* myhex-1.0\\n"\n' >"$t/mix"
+  assert_command_fails "MACLIFT_MIX='$t/mix' bash -c 'source \"$PROJECT_ROOT/lib/toolchain.sh\"; toolchain_has_archive hex'" "anchored: myhex-1.0 is not hex"
+  printf '#!/bin/sh\nprintf "* hex-2.2.1\\nTrailer\\n"\nexit 1\n' >"$t/mix"
+  assert_command_succeeds "set -o pipefail; MACLIFT_MIX='$t/mix' bash -c 'source \"$PROJECT_ROOT/lib/toolchain.sh\"; set -o pipefail; toolchain_has_archive hex'" "producer exiting 1 after the line still counts"
+  printf '#!/bin/sh\nexit 1\n' >"$t/mix"
+  assert_command_fails "MACLIFT_MIX='$t/mix' bash -c 'source \"$PROJECT_ROOT/lib/toolchain.sh\"; toolchain_has_archive hex'" "failing mix with no output is a miss"
+}
+
 test_path_setup_prepends_shims
 test_needs_writes_reason
+test_has_archive
 test_summary

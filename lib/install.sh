@@ -111,7 +111,8 @@ install_item() {
   MACLIFT_NEED_REASON=""
   log_line "installing $1"
   MACLIFT_NEED_FILE="$need_file" _install_item_body "$1" >>"${MACLIFT_LOG:-/dev/null}" 2>&1 || rc=$?
-  if [ "$rc" -eq 3 ]; then
+  # Exit 3 is a needs-skip only for script items; anything else is a failure.
+  if [ "$rc" -eq 3 ] && [ "$(_install_kind "$1")" = script ]; then
     MACLIFT_NEED_REASON="$(head -n 1 "$need_file" 2>/dev/null | tr -d '[:space:]')"
     rm -f "$need_file"
     [ -n "$MACLIFT_NEED_REASON" ] || MACLIFT_NEED_REASON="a runtime"

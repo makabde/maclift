@@ -17,7 +17,7 @@ maclift_init_paths
 toolchain_path_setup
 
 if [ "${1:-}" = "--check" ]; then
-  toolchain_archives 2>/dev/null | grep -q 'hex-'
+  toolchain_has_archive hex
   exit $?
 fi
 

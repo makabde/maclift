@@ -354,6 +354,7 @@ if [ -n "$_new" ]; then
   if [ "$ASSUME_YES" = "1" ] && [ "$DRY_RUN" != "1" ]; then
     # shellcheck disable=SC2046
     selection_save $(printf '%s\n' "$SELECTED") || die "could not save your selection"
+    selection_mark_seen || die "could not save your selection"
   fi
 fi
 EXTRAS="$MACLIFT_EXTRA_IDS"
@@ -506,6 +507,7 @@ if [ "$ASSUME_YES" != "1" ]; then
     choose_extras || exit 1
     # shellcheck disable=SC2046
     selection_save $(printf '%s\n' "$SELECTED") || die "could not save your selection"
+    selection_mark_seen || die "could not save your selection"
     # selection_save adds required items; reload so SELECTED matches the file.
     SELECTED="$(selection_load)
 "

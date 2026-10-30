@@ -117,6 +117,17 @@ test_cmd_add_catalog() {
   assert_command_fails "[ -e '$F' ]" "not in Brewfile.local"
 }
 
+test_cmd_add_leaves_offer_pending() {
+  test_suite "cmd_add does not mark the new-defaults offer as seen"
+  reset_stub
+  rm -f "$MACLIFT_CONFIG_DIR/selection.conf"
+  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="brew:git asdf:python"\n' >"$MACLIFT_CONFIG_DIR/selection.conf"
+  cmd_add 0 bat >/dev/null 2>&1
+  assert_contains "$(selection_load)" "brew:bat" "bat saved"
+  assert_contains "$(selection_new_defaults)" "script:hex" "offer still pending"
+  assert_command_fails "conf_get '$MACLIFT_CONFIG_DIR/selection.conf' MACLIFT_SEEN" "no seen list written"
+}
+
 test_cmd_add_save_fails() {
   test_suite "cmd_add when the selection cannot be saved"
   reset_stub
@@ -166,6 +177,7 @@ test_resolve
 test_cmd_add
 test_cmd_add_no_gitconfig
 test_cmd_add_catalog
+test_cmd_add_leaves_offer_pending
 test_cmd_add_save_fails
 test_cmd_add_cask_prefix
 test_cmd_add_ambiguous_among_many

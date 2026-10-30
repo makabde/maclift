@@ -246,6 +246,23 @@ test_needs_skip_not_failed() {
   assert_command_succeeds "grep -q 'SKIPPED script:x (needs elixir)' '$MACLIFT_CONFIG_DIR/logs/$MACLIFT_RUN_ID.log'" "log has skip"
 }
 
+test_rc3_only_skips_scripts() {
+  test_suite "exit 3 is a needs-skip only for script items"
+  fresh_home
+  local d rc=0 saved="$MACLIFT_DIR" savedbrew="$MACLIFT_BREW"
+  d="$(fake_script_dir)"
+  printf 'brew\tb3\toff\tItem b3\t\n' >>"$d/catalog/50-x.tsv"
+  printf '#!/bin/sh\ncase "$1" in list) exit 1 ;; *) exit 3 ;; esac\n' >"$d/brew3"
+  chmod +x "$d/brew3"
+  MACLIFT_DIR="$d" MACLIFT_BREW="$d/brew3"
+  install_run 0 brew:b3 >"$MACLIFT_STUB_DIR/out" 2>&1 || rc=$?
+  MACLIFT_DIR="$saved" MACLIFT_BREW="$savedbrew"
+  assert_equals "1" "$rc" "brew exit 3 fails the run"
+  assert_equals "brew:b3" "$MACLIFT_FAILED" "recorded as failed"
+  assert_equals "" "${MACLIFT_NEEDS:-}" "not recorded as a needs-skip"
+  assert_command_fails "grep -q 'needs' '$MACLIFT_STUB_DIR/out'" "no needs line"
+}
+
 test_script_catalog_order() {
   test_suite "scripts run in catalog order"
   fresh_home
@@ -259,6 +276,7 @@ test_script_catalog_order() {
 
 test_failure_continues
 test_needs_skip_not_failed
+test_rc3_only_skips_scripts
 test_script_catalog_order
 test_skip_if_app
 test_notes

@@ -285,15 +285,13 @@ _doctor_selected() {
 # folder). Runs in a subshell so doctor's own PATH and cwd stay untouched.
 # Also notes (without failing) which python answers and a second uv.
 doctor_check_toolchains() {
-  local bad=0 any=0 what="" arch="" path dir py="" seen="" real n=0 first="" second=""
+  local bad=0 any=0 what="" path dir py="" seen="" real n=0 first="" second=""
   path="$(_doctor_path 2>/dev/null)" || path="$PATH"
 
   if _doctor_selected script:hex || _doctor_selected script:phx_new; then
     any=1
     if _doctor_selected script:hex; then
-      # Capture first: grep -q closing the pipe early fails under pipefail.
-      arch="$(toolchain_path_setup && toolchain_archives 2>/dev/null)" || arch=""
-      case "$arch" in *"hex-"*) ;; *) what="hex" ;; esac
+      (toolchain_path_setup && toolchain_has_archive hex) || what="hex"
     fi
     if _doctor_selected script:phx_new; then
       (toolchain_path_setup && toolchain_mix phx.new --version) >/dev/null 2>&1 || what="${what:+$what, }phx_new"
@@ -320,8 +318,9 @@ doctor_check_toolchains() {
       bad=1
     else
       case "$py" in
-        "$MACLIFT_HOME/.asdf/shims/"*) _doctor_note "python is $py (asdf)" ;;
-        *) _doctor_note "python is $py (uv)" ;;
+        "${UV_PYTHON_BIN_DIR:-$MACLIFT_HOME/.local/bin}/"*) _doctor_note "python is $py (uv)" ;;
+        "${ASDF_DATA_DIR:-$MACLIFT_HOME/.asdf}/shims/"*) _doctor_note "python is $py (asdf)" ;;
+        *) _doctor_note "python is $py (other)" ;;
       esac
     fi
   fi
@@ -345,6 +344,8 @@ doctor_check_toolchains() {
   [ "$bad" = 0 ] || return 1
   if [ "$any" = 1 ]; then
     _doctor_ok "Language tools ready"
+  elif [ -n "$(selection_new_defaults 2>/dev/null)" ]; then
+    _doctor_note "Language tools not selected yet; run maclift -y to add them"
   else
     _doctor_ok "No language tools selected"
   fi

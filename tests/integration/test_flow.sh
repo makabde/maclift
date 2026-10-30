@@ -73,6 +73,7 @@ test_full_flow() {
   assert_file_exists "$CONF/user.conf" "user.conf exists"
   assert_command_succeeds "grep -q 'MACLIFT_NAME=\"Test User\"' '$CONF/user.conf'" "user.conf has the name"
   assert_command_succeeds "grep '^MACLIFT_ITEMS=' '$CONF/selection.conf' | grep -q 'brew:git'" "selection.conf has brew:git"
+  assert_command_succeeds "grep -q '^MACLIFT_SEEN=.*script:hex' '$CONF/selection.conf'" "first picker save marks the catalog seen"
   assert_command_succeeds "[ -L '$MACLIFT_HOME/.zshrc' ]" ".zshrc is a symlink"
   case "$(readlink "$MACLIFT_HOME/.zshrc")" in
     "$PROJECT_ROOT/dotfiles/"*) assert_equals "ok" "ok" ".zshrc points into the repo dotfiles" ;;
@@ -284,7 +285,7 @@ test_existing_selection_gets_new_items() {
   test_suite "a 1.0.0 selection is offered new default-on items once"
   setup_env
   write_user_conf
-  printf 'MACLIFT_GROUPS="cli"\nMACLIFT_ITEMS="brew:git brew:bat"\n' >"$CONF/selection.conf"
+  printf 'MACLIFT_GROUPS="cli languages"\nMACLIFT_ITEMS="brew:git brew:bat asdf:python"\n' >"$CONF/selection.conf"
   local before out rc=0
   before="$(cksum <"$CONF/selection.conf")"
   out="$("$MACLIFT" -y --dry-run </dev/null 2>&1)" || rc=$?

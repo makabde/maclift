@@ -39,6 +39,11 @@ example `mix` for hex), it writes one word naming what it needs (such as
 "skipped (needs elixir)", not a failure. Shared helpers for this, and for
 putting the right tools on `PATH`, are in `lib/toolchain.sh`.
 
+When you add a new default-on catalog item, nothing else is needed: the seen
+list in `selection.conf` makes maclift offer it once to existing users.
+`SELECTION_ADDED_SINCE_1_0` in `lib/selection.sh` must never be edited except
+to list items added between 1.0.0 and the first release that has the seen list.
+
 ## Run the tests
 
 Run the unit files one at a time, under both shells:
