@@ -57,10 +57,10 @@ test_install_fresh() {
   assert_file_exists "$dir/maclift" "maclift unpacked into MACLIFT_DIR"
   assert_file_exists "$dir/VERSION" "VERSION unpacked"
   assert_equals 'MACLIFT_RELEASE_REPO="makabde/maclift"
-MACLIFT_RELEASE_TAG="v1.0.0"' "$(cat "$dir/.maclift-release")" "marker names repo and tag"
+MACLIFT_RELEASE_TAG="v'"$(cat "$PROJECT_ROOT/VERSION")"'"' "$(cat "$dir/.maclift-release")" "marker names repo and tag"
   assert_equals "-y" "$(cat "$STUB/maclift.args" 2>/dev/null)" "maclift ran with the given args"
   assert_equals "-fsSL -o" "$(cut -d' ' -f1-2 "$STUB/curl.calls")" "curl -fsSL"
-  assert_contains "$(cat "$STUB/curl.calls")" "https://github.com/makabde/maclift/archive/refs/tags/v1.0.0.tar.gz" "downloads the tagged release"
+  assert_contains "$(cat "$STUB/curl.calls")" "https://github.com/makabde/maclift/archive/refs/tags/v$(cat "$PROJECT_ROOT/VERSION").tar.gz" "downloads the tagged release"
   assert_equals "" "$(tmp_left)" "temporary folder removed"
   local where
   where="$(cut -d' ' -f3 "$STUB/curl.calls")"
