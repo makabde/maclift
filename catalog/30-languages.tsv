@@ -6,9 +6,10 @@
 asdf	erlang	on	Erlang/OTP runtime	https://github.com/asdf-vm/asdf-erlang.git
 asdf	elixir	on	Elixir language	https://github.com/asdf-vm/asdf-elixir.git
 asdf	nodejs	on	Node.js runtime	https://github.com/asdf-vm/asdf-nodejs.git
-asdf	python	on	Python interpreter	https://github.com/asdf-community/asdf-python.git
+asdf	python	off	Python interpreter	https://github.com/asdf-community/asdf-python.git
 brew	uv	on	Fast Python package manager
-brew	xz	on	Compression library needed to build Python
+brew	pnpm	on	Fast JavaScript package manager
+brew	xz	off	Compression library, only needed to build Python with asdf
 brew	wxwidgets	off	GUI toolkit for Erlang observer
 brew	libxslt	off	XSLT library for Phoenix builds
 brew	unixodbc	off	ODBC library for Erlang builds
@@ -19,3 +20,4 @@ brew	rebar3	off	Standalone rebar3 for pure Erlang projects
 script	hex	on	Hex package manager for Elixir	toolchains/hex.sh
 script	rebar	on	rebar3 for Mix to build Erlang deps	toolchains/rebar.sh
 script	phx_new	on	Phoenix project generator (mix phx.new)	toolchains/phx_new.sh
+script	python	on	Default Python managed by uv	toolchains/python.sh

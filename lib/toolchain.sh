@@ -42,3 +42,15 @@ toolchain_needs() {
 
 # toolchain_archives: installed mix archives, lines like "* hex-2.2.1".
 toolchain_archives() { toolchain_mix archive; }
+
+# toolchain_python_asdf_chosen: true when the user picked asdf for Python:
+# asdf:python is in the saved selection, or python is already pinned.
+# Needs lib/conf.sh, lib/catalog.sh and lib/asdf.sh sourced by the caller.
+toolchain_python_asdf_chosen() {
+  local items w
+  items="$(conf_get "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS 2>/dev/null || true)"
+  for w in $items; do
+    [ "$w" = "asdf:python" ] && return 0
+  done
+  _pins_read "$(_pins_file)" python >/dev/null 2>&1
+}

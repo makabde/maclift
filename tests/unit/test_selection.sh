@@ -42,6 +42,18 @@ test_defaults() {
   assert_equals "$(printf '%s\n' "$d" | sort)" "$(selection_load | sort)" "load without file equals defaults"
 }
 
+test_new_defaults() {
+  test_suite "language toolchain defaults"
+  local d i
+  d="$(selection_defaults)"
+  for i in brew:pnpm script:hex script:rebar script:phx_new script:python; do
+    assert_command_succeeds "printf '%s\\n' \"$d\" | grep -qx '$i'" "defaults contain $i"
+  done
+  for i in asdf:python brew:xz; do
+    assert_command_fails "printf '%s\\n' \"$d\" | grep -qx '$i'" "defaults exclude $i"
+  done
+}
+
 test_save_load() {
   test_suite "selection_save / selection_load"
   local core out
@@ -105,6 +117,7 @@ STUB
 }
 
 test_defaults
+test_new_defaults
 test_save_load
 test_load_required
 test_import
