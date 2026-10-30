@@ -1,0 +1,9 @@
+@id tmux
+@title tmux
+@description Terminal multiplexer and its config
+@default on
+@required no
+brew	tmux	on	Terminal multiplexer
+brew	reattach-to-user-namespace	on	Clipboard support for tmux
+brew	tmux-fingers	on	Copy text with hints (prefix u)
+dotfiles	tmux	on	Link the tmux config	shell/tmux.conf

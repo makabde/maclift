@@ -1,0 +1,636 @@
+#!/usr/bin/env bash
+#
+# maclift: liftoff for your new Mac. Interactive setup installer.
+# bash 3.2 compatible.
+#
+# Exit codes: 0 success, 1 install failures, 2 development guard,
+# 64 bad usage, 130 interrupted.
+
+_MACLIFT_SELF="${BASH_SOURCE[0]}"
+while [ -L "$_MACLIFT_SELF" ]; do
+  _l="$(readlink "$_MACLIFT_SELF")"
+  case "$_l" in /*) _MACLIFT_SELF="$_l" ;; *) _MACLIFT_SELF="$(dirname "$_MACLIFT_SELF")/$_l" ;; esac
+done
+_MACLIFT_ROOT="$(cd "$(dirname "$_MACLIFT_SELF")" && pwd)"
+unset _l
+
+for _f in core conf catalog selection ui banner dotfiles identity asdf install preflight bootstrap migrate doctor localbrew add snapshot restore update; do
+  # shellcheck disable=SC1090
+  . "$_MACLIFT_ROOT/lib/$_f.sh"
+done
+unset _f
+# Set by install_run for this run only; never trust one from the environment.
+unset MACLIFT_NOTES
+
+usage() {
+  cat <<'EOT'
+Usage: maclift [options]
+       maclift doctor
+       maclift add <name>... [--dry-run] [-y]
+       maclift update [--dry-run] [-y]
+       maclift snapshot [--dry-run] [-y]
+       maclift restore [--run <id>] [--dry-run] [-y]
+       maclift migrate --from <old-folder> [--dry-run] [-y]
+       maclift migrate --rollback [--run <id>] [--dry-run] [-y]
+
+liftoff for your new Mac: pick what you want, then maclift installs it.
+
+Options:
+  -y, --yes          Reuse your saved answers and selection; ask nothing
+      --dry-run      Show what would happen; change nothing outside
+                     ~/.config/maclift
+      --from <path|url>
+                     Start from a shared selection file
+  -h, --help         Show this help
+      --version      Show the version
+
+Commands:
+  doctor             Check this Mac and say how to fix what is wrong
+  add <name>...      Install packages and remember them
+  update             Pull maclift, upgrade packages, offer newer languages
+  snapshot           Save installed packages maclift doesn't know yet
+  restore            Put back dotfiles from a backup (--run <id>)
+  migrate            Move links from an old dotfiles folder (--from, --rollback)
+
+Environment:
+  MACLIFT_HOME            Home folder to configure (default: $HOME)
+  MACLIFT_PLAIN=1         Plain text UI, no gum
+  MACLIFT_SKIP_BOOTSTRAP=1
+                          Test-only: skip the command-line tools, Homebrew
+                          and gum bootstrap
+
+Exit codes: 0 done, 1 something failed, 2 development guard,
+64 bad usage, 130 interrupted.
+EOT
+}
+
+usage_error() {
+  echo "maclift: $1" >&2
+  usage >&2
+  exit 64
+}
+
+# ---- arguments ----
+
+DRY_RUN=0
+FOR_REAL=0
+ASSUME_YES=0
+FROM=""
+SUBCMD=""
+CMD_ARGS=()
+ROLLBACK=0
+RUN_ID_ARG=""
+NO_PULL=0 # read by cmd_update (hidden --no-pull flag)
+export NO_PULL
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -y | --yes) ASSUME_YES=1 ;;
+    --dry-run) DRY_RUN=1 ;;
+    --for-real) FOR_REAL=1 ;;
+    --no-pull)
+      [ "$SUBCMD" = update ] || usage_error "--no-pull only works with: maclift update"
+      NO_PULL=1
+      ;;
+    --rollback)
+      [ "$SUBCMD" = migrate ] || usage_error "--rollback only works with: maclift migrate"
+      ROLLBACK=1
+      ;;
+    --run)
+      case "$SUBCMD" in migrate | restore) ;; *) usage_error "--run only works with: maclift migrate --rollback, maclift restore" ;; esac
+      [ $# -ge 2 ] && [ -n "$2" ] || usage_error "--run needs a run id"
+      RUN_ID_ARG="$2"
+      shift
+      ;;
+    --run=*)
+      case "$SUBCMD" in migrate | restore) ;; *) usage_error "--run only works with: maclift migrate --rollback, maclift restore" ;; esac
+      RUN_ID_ARG="${1#--run=}"
+      [ -n "$RUN_ID_ARG" ] || usage_error "--run needs a run id"
+      ;;
+    --from)
+      [ $# -ge 2 ] && [ -n "$2" ] || usage_error "--from needs a path or URL"
+      FROM="$2"
+      shift
+      ;;
+    --from=*)
+      FROM="${1#--from=}"
+      [ -n "$FROM" ] || usage_error "--from needs a path or URL"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --version)
+      maclift_init_paths
+      echo "maclift $MACLIFT_VERSION"
+      exit 0
+      ;;
+    -*) usage_error "unknown option: $1" ;;
+    *)
+      if [ "$SUBCMD" = add ]; then
+        CMD_ARGS+=("$1")
+      elif [ -n "$SUBCMD" ]; then
+        usage_error "unexpected argument: $1"
+      else
+        case "$1" in
+          migrate | add | update | doctor | snapshot | restore) SUBCMD="$1" ;;
+          *) usage_error "unknown command: $1" ;;
+        esac
+      fi
+      ;;
+  esac
+  shift
+done
+
+[ "$SUBCMD" != add ] || [ "${#CMD_ARGS[@]}" -gt 0 ] || usage_error "add needs a name: maclift add <name>..."
+
+case "$SUBCMD" in
+  '' | migrate) ;;
+  *) [ -z "$FROM" ] || usage_error "--from only works without a command (or with: maclift migrate)" ;;
+esac
+
+if [ "$SUBCMD" = migrate ]; then
+  if [ "$ROLLBACK" = 1 ]; then
+    [ -z "$FROM" ] || usage_error "--from and --rollback cannot be combined"
+  else
+    [ -z "$RUN_ID_ARG" ] || usage_error "--run only works with --rollback"
+    [ -n "$FROM" ] || usage_error "migrate needs --from <old-folder> or --rollback"
+    if [ ! -d "$FROM" ]; then
+      echo "maclift migrate: --from $FROM: not a directory" >&2
+      exit 64
+    fi
+  fi
+fi
+
+# ---- helpers ----
+
+NL='
+'
+
+# _contains <needle> <newline-separated list>; pure bash (no fork per call).
+_contains() {
+  case "$NL$2$NL" in *"$NL$1$NL"*) return 0 ;; esac
+  return 1
+}
+
+# Comma-joins lines (for ui_choose_many preselection).
+_csv() {
+  printf '%s\n' "$1" | awk 'NF { printf "%s%s", (n++ ? "," : ""), $0 }'
+}
+
+# Menu label: "<id or title> — <description>"; map back with ${label%% — *}.
+# Commas become U+201A (‚), which looks the same, because gum's --selected
+# list is comma-separated.
+_item_label() {
+  local id="$1" desc="$2" lowcomma='‚'
+  desc="${desc//,/$lowcomma}"
+  printf '%s — %s\n' "$id" "$desc"
+}
+
+# Groups, one per line: "id<TAB>title<TAB>required<TAB>description".
+_groups_table() {
+  local g req
+  for g in $(catalog_groups); do
+    req="$(catalog_group_field "$g" required)"
+    printf '%s\t%s\t%s\t%s\n' "$g" "$(catalog_group_field "$g" title)" "${req:-no}" \
+      "$(catalog_group_field "$g" description)"
+  done
+}
+
+# The trap can fire while stderr is redirected to the log (inside
+# install_item), so it writes to fd 9: the terminal's stderr saved at start.
+_on_interrupt() {
+  trap - INT TERM
+  ! _ui_is_tty || printf '\033[?25h' >&9
+  printf '\nInterrupted. Re-run maclift to finish (log: %s)\n' "$MACLIFT_LOG" >&9
+  exit 130
+}
+
+# Runs a user hook with bash (never sourced). <name> <fatal:0|1>
+_run_hook() {
+  local hook="$MACLIFT_CONFIG_DIR/hooks/$1" fatal="$2" rc=0
+  [ -f "$hook" ] || return 0
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "would run hook $hook"
+    return 0
+  fi
+  log_line "running hook $hook"
+  bash "$hook" || rc=$?
+  [ "$rc" = 0 ] && return 0
+  log_line "hook $hook failed (exit $rc)"
+  if [ "$fatal" = "1" ]; then
+    echo "✗ $1 failed (exit $rc); nothing was installed. Fix it and run maclift again." >&2
+    return 1
+  fi
+  echo "warning: $1 failed (exit $rc)" >&2
+  return 0
+}
+
+# ---- 1-3: paths, guard, interrupt trap ----
+
+maclift_init_paths
+
+# doctor changes nothing: no guard, no log.
+if [ "$SUBCMD" = doctor ]; then
+  cmd_doctor "$DRY_RUN"
+  exit $?
+fi
+
+maclift_guard_real_home "$DRY_RUN" "$FOR_REAL" || exit 2
+
+if [ "$ASSUME_YES" = "1" ]; then
+  MACLIFT_ASSUME_YES=1
+  export MACLIFT_ASSUME_YES
+fi
+
+dotfiles_run_id
+mkdir -p "$MACLIFT_CONFIG_DIR/logs" || die "could not create $MACLIFT_CONFIG_DIR/logs"
+MACLIFT_LOG="$MACLIFT_CONFIG_DIR/logs/$MACLIFT_RUN_ID.log"
+export MACLIFT_LOG
+log_line "maclift $MACLIFT_VERSION start (dry_run=$DRY_RUN yes=$ASSUME_YES)"
+
+exec 9>&2
+trap _on_interrupt INT TERM
+
+# ---- add, update, snapshot, restore: no banner art, no menus ----
+
+case "$SUBCMD" in
+  add | update | snapshot | restore)
+    if ! type "cmd_$SUBCMD" >/dev/null 2>&1; then
+      echo "maclift: $SUBCMD: not yet available" >&2
+      exit 64
+    fi
+    [ "$SUBCMD" != restore ] || [ -z "$RUN_ID_ARG" ] || CMD_ARGS=("$RUN_ID_ARG")
+    _cmd_rc=0
+    "cmd_$SUBCMD" "$DRY_RUN" ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} || _cmd_rc=$?
+    _notes="$(install_notes)"
+    if [ -n "$_notes" ]; then
+      echo
+      printf 'Next steps:\n%s\n' "$_notes"
+    fi
+    log_line "maclift $SUBCMD done (exit $_cmd_rc)"
+    exit "$_cmd_rc"
+    ;;
+esac
+
+# ---- migrate: no banner art, no questions, no menus ----
+
+if [ "$SUBCMD" = migrate ]; then
+  _mig_rc=0
+  if [ "$ROLLBACK" = 1 ]; then
+    echo "maclift migrate: rolling back${RUN_ID_ARG:+ run $RUN_ID_ARG}"
+    if [ "$DRY_RUN" != "1" ] && [ "$ASSUME_YES" != "1" ]; then
+      ui_confirm "Roll back the migration?" n || { echo "Nothing changed."; exit 0; }
+    fi
+    migrate_rollback "$DRY_RUN" "$RUN_ID_ARG" || _mig_rc=$?
+  else
+    echo "maclift migrate: repointing links from $FROM into maclift"
+    _plan="$(migrate_plan "$FROM")" || die "could not read $FROM"
+    _n_repoint="$(printf '%s\n' "$_plan" | awk -F'\t' '$4 == "repoint" { n++ } END { print n + 0 }')"
+    _n_left="$(printf '%s\n' "$_plan" | awk -F'\t' 'NF && $4 != "repoint" { n++ } END { print n + 0 }')"
+    if [ "$_n_repoint" -gt 0 ]; then
+      ui_box "From: $FROM" "Links to repoint: $_n_repoint" "Left alone (no maclift copy): $_n_left"
+      if [ "$DRY_RUN" != "1" ] && [ "$ASSUME_YES" != "1" ]; then
+        ui_confirm "Repoint $_n_repoint links?" n || { echo "Nothing changed."; exit 0; }
+      fi
+    fi
+    migrate_apply "$DRY_RUN" "$FROM" || _mig_rc=$?
+  fi
+  log_line "maclift migrate done (exit $_mig_rc)"
+  exit "$_mig_rc"
+fi
+
+# ---- 4-6: banner, machine checks, bootstrap ----
+
+banner_show
+echo
+chip="$(preflight_check)" || exit 1
+echo "✓ $chip Mac"
+
+if [ "${MACLIFT_SKIP_BOOTSTRAP:-}" = "1" ]; then
+  log_line "bootstrap skipped (MACLIFT_SKIP_BOOTSTRAP)"
+else
+  bootstrap_run "$DRY_RUN" || exit 1
+fi
+
+# ---- 7-8: identity, --from ----
+
+identity_ask || exit 1
+
+if [ -n "$FROM" ]; then
+  selection_import "$FROM" || exit 1
+  echo "✓ Imported selection from $FROM"
+fi
+
+# Extras from Brewfile.local (current shell: it sets MACLIFT_EXTRA_*).
+install_brewfile_local >/dev/null
+
+GROUPS_TABLE="$(_groups_table)"
+ITEMS_TABLE="$(catalog_table)"
+ALL_IDS="$(printf '%s\n' "$ITEMS_TABLE" | cut -f2)"
+
+# Saved selection, limited to ids that are still in the catalog.
+SELECTED=""
+while IFS= read -r _id; do
+  [ -n "$_id" ] || continue
+  if _contains "$_id" "$ALL_IDS"; then
+    SELECTED="$SELECTED$_id$NL"
+  else
+    echo "maclift: skipped $_id (not in catalog)" >&2
+  fi
+done <<EOT
+$(selection_load)
+EOT
+EXTRAS="$MACLIFT_EXTRA_IDS"
+
+# ---- 9-13: groups, fine-tune, extras, save, review ----
+
+# Group step: sets CHOSEN_GROUPS (ids, one per line) from SELECTED. Required
+# groups are always chosen and shown as a note, not a checkbox.
+choose_groups() {
+  local g title req desc required="" labels=() label pre="" out="" grp id line chosen=""
+  CHOSEN_GROUPS=""
+  while IFS='	' read -r g title req desc; do
+    if [ "$req" = yes ]; then
+      required="${required:+$required, }$title"
+      continue
+    fi
+    label="$(_item_label "$title" "$desc")"
+    labels+=("$label")
+    while IFS='	' read -r grp id _; do
+      if [ "$grp" = "$g" ] && _contains "$id" "$SELECTED"; then
+        pre="$pre$label$NL"
+        break
+      fi
+    done <<EOT
+$ITEMS_TABLE
+EOT
+  done <<EOT
+$GROUPS_TABLE
+EOT
+  [ -z "$required" ] || echo "Always installed: $required" >&2
+  if [ "${#labels[@]}" -gt 0 ]; then
+    out="$(ui_choose_many "Choose groups" "$(_csv "$pre")" "${labels[@]}")" || return 1
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] && chosen="$chosen${line%% — *}$NL"
+  done <<EOT
+$out
+EOT
+  while IFS='	' read -r g title req desc; do
+    if [ "$req" = yes ] || _contains "$title" "$chosen"; then
+      CHOSEN_GROUPS="$CHOSEN_GROUPS$g$NL"
+    fi
+  done <<EOT
+$GROUPS_TABLE
+EOT
+}
+
+# Fine-tune step: rebuilds SELECTED from the chosen groups. A group with no
+# saved items (newly ticked) starts from its default-on items.
+fine_tune() {
+  local g title req grp id def desc labels=() pre any out line new=""
+  # The outer loop reads fd 3 so ui_choose_many keeps the user's stdin.
+  while IFS='	' read -r g title req _ <&3; do
+    _contains "$g" "$CHOSEN_GROUPS" || continue
+    if [ "$req" = yes ]; then
+      new="$new$(printf '%s\n' "$ITEMS_TABLE" | awk -F'\t' -v g="$g" '$1 == g { print $2 }')$NL"
+      continue
+    fi
+    labels=()
+    pre=""
+    any=0
+    while IFS='	' read -r grp id def desc; do
+      [ "$grp" = "$g" ] && _contains "$id" "$SELECTED" && any=1
+    done <<EOT
+$ITEMS_TABLE
+EOT
+    while IFS='	' read -r grp id def desc; do
+      [ "$grp" = "$g" ] || continue
+      line="$(_item_label "$id" "$desc")"
+      labels+=("$line")
+      if [ "$any" = 1 ]; then
+        _contains "$id" "$SELECTED" && pre="$pre$line$NL"
+      elif [ "$def" = on ]; then
+        pre="$pre$line$NL"
+      fi
+    done <<EOT
+$ITEMS_TABLE
+EOT
+    [ "${#labels[@]}" -gt 0 ] || continue
+    out="$(ui_choose_many "$title" "$(_csv "$pre")" "${labels[@]}")" || return 1
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      new="$new${line%% — *}$NL"
+    done <<EOT
+$out
+EOT
+  done 3<<EOT
+$GROUPS_TABLE
+EOT
+  SELECTED="$new"
+}
+
+# Extras step: narrows EXTRAS to the ones the user keeps.
+choose_extras() {
+  local id name label labels=() pre="" out line kept=""
+  [ -n "$MACLIFT_EXTRA_IDS" ] || return 0
+  for id in $MACLIFT_EXTRA_IDS; do
+    name="$(printf '%s\n' "$MACLIFT_EXTRA_NAMES" | awk -F'\t' -v id="$id" '$1 == id { print $2; exit }')"
+    label="$(_item_label "$id" "${name:-from Brewfile.local}")"
+    labels+=("$label")
+    # Only the extras still kept (all of them at first; fewer after Back).
+    _contains "$id" "$EXTRAS" && pre="$pre$label$NL"
+  done
+  out="$(ui_choose_many "Your extras" "$(_csv "$pre")" "${labels[@]}")" || return 1
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    kept="$kept${line%% — *}
+"
+  done <<EOT
+$out
+EOT
+  EXTRAS="${kept%
+}"
+}
+
+# Prints the review box lines for the given ids.
+review_lines() {
+  local id kind brew=0 cask=0 mas=0 asdf=0 dot=0 script=0 tenths=0 total=0
+  for id in "$@"; do
+    kind="${id%%:*}"
+    total=$((total + 1))
+    case "$kind" in
+      brew) brew=$((brew + 1)); tenths=$((tenths + 5)) ;;
+      cask) cask=$((cask + 1)); tenths=$((tenths + 10)) ;;
+      asdf) asdf=$((asdf + 1)); tenths=$((tenths + 50)) ;;
+      mas) mas=$((mas + 1)); tenths=$((tenths + 1)) ;;
+      dotfiles) dot=$((dot + 1)); tenths=$((tenths + 1)) ;;
+      *) script=$((script + 1)); tenths=$((tenths + 1)) ;;
+    esac
+  done
+  echo "Your choices: $total items"
+  [ "$brew" = 0 ] || echo "brew: $brew"
+  [ "$cask" = 0 ] || echo "apps (cask): $cask"
+  [ "$mas" = 0 ] || echo "App Store: $mas"
+  [ "$asdf" = 0 ] || echo "languages (asdf): $asdf"
+  [ "$dot" = 0 ] || echo "dotfiles: $dot"
+  [ "$script" = 0 ] || echo "scripts: $script"
+  echo "About $(((tenths + 9) / 10)) min"
+}
+
+# Final id list (catalog selection + kept extras), one per line, no duplicates.
+final_ids() {
+  printf '%s\n%s\n' "$SELECTED" "$EXTRAS" | awk 'NF && !seen[$0]++'
+}
+
+if [ "$ASSUME_YES" != "1" ]; then
+  while :; do
+    choose_groups || exit 1
+    fine_tune || exit 1
+    choose_extras || exit 1
+    # shellcheck disable=SC2046
+    selection_save $(printf '%s\n' "$SELECTED") || die "could not save your selection"
+    # selection_save adds required items; reload so SELECTED matches the file.
+    SELECTED="$(selection_load)
+"
+    if _contains "script:second-identity" "$(final_ids)"; then
+      identity_ask_alt || exit 1
+    fi
+    _lines=()
+    # shellcheck disable=SC2046
+    while IFS= read -r _l; do _lines+=("$_l"); done <<EOT
+$(review_lines $(final_ids))
+EOT
+    echo
+    ui_box "${_lines[@]}"
+    _choice="$(ui_choose_one "Ready?" Install Back "Save without installing")" || exit 1
+    case "$_choice" in
+      Install) break ;;
+      Back) continue ;;
+      *)
+        echo "✓ Saved your selection to $MACLIFT_CONFIG_DIR/selection.conf"
+        exit 0
+        ;;
+    esac
+  done
+fi
+
+IDS=()
+while IFS= read -r _id; do
+  [ -n "$_id" ] && IDS+=("$_id")
+done <<EOT
+$(final_ids)
+EOT
+
+# -y skips the loop above: check the saved second-identity answers here.
+if [ "$ASSUME_YES" = "1" ] && _contains "script:second-identity" "$(final_ids)"; then
+  identity_ask_alt || exit 1
+fi
+
+# ---- 14-15: gitconfig, hooks around the install ----
+
+echo
+identity_render_gitconfig "$DRY_RUN" || die "could not write $MACLIFT_HOME/.gitconfig.local"
+
+if [ "$DRY_RUN" != "1" ] \
+  && [ "$(maclift_real_path "$MACLIFT_HOME")" != "$(maclift_real_path "$HOME")" ]; then
+  echo "Note: MACLIFT_HOME is a sandbox, but packages still install system-wide (Homebrew/asdf)." >&2
+fi
+
+_run_hook pre-install.sh 1 || exit 1
+
+# ~/.maclift -> the clone, so dotfiles can use ~/.maclift/dotfiles/... paths.
+_repo_out="$(dotfiles_link_repo "$DRY_RUN" 2>&1)" || die "could not link $MACLIFT_HOME/.maclift: $_repo_out"
+log_line "repo link: $_repo_out"
+case "$_repo_out" in would*) printf '%s\n' "$_repo_out" ;; esac
+
+_log_start="$(wc -l <"$MACLIFT_LOG" 2>/dev/null | tr -d ' ')"
+_log_start="${_log_start:-0}"
+INSTALL_RC=0
+install_run "$DRY_RUN" ${IDS[@]+"${IDS[@]}"} || INSTALL_RC=$?
+
+# An item (gpg-signing) may have changed user.conf; an identical file is left alone.
+if [ "$DRY_RUN" != "1" ]; then
+  if ! identity_render_gitconfig 0 >/dev/null; then
+    echo "✗ could not update $MACLIFT_HOME/.gitconfig.local" >&2
+    MACLIFT_FAILED="${MACLIFT_FAILED:+$MACLIFT_FAILED }gitconfig"
+    INSTALL_RC=1
+  fi
+fi
+
+_link_rc=0
+_link_out="$(dotfiles_link_user "$DRY_RUN" ${IDS[@]+"${IDS[@]}"} 2>&1)" || _link_rc=$?
+if [ -n "$_link_out" ]; then
+  printf '%s\n' "$_link_out" >>"$MACLIFT_LOG"
+  printf '%s\n' "$_link_out" | grep -E '^(would|✗)' || true
+fi
+if [ "$_link_rc" != 0 ]; then
+  echo "✗ could not link your own dotfiles (see the log)" >&2
+  MACLIFT_FAILED="${MACLIFT_FAILED:+$MACLIFT_FAILED }user-dotfiles"
+  INSTALL_RC=1
+fi
+
+_run_hook post-install.sh 0
+
+# ---- 16: done ----
+
+# A log_line entry (timestamped), as opposed to a command's own output.
+# shellcheck disable=SC2016 # awk code, not shell
+_LOG_MARK='$1 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ && $2 ~ /^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]$/'
+
+# Counts from this run's part of the log.
+_count() {
+  tail -n "+$((_log_start + 1))" "$MACLIFT_LOG" | awk -v w="$1" "$_LOG_MARK"' && $3 == w' | wc -l | tr -d ' '
+}
+
+# Last 5 output lines logged for a failed item.
+_fail_tail() {
+  tail -n "+$((_log_start + 1))" "$MACLIFT_LOG" | awk -v id="$1" '
+    '"$_LOG_MARK"' && $3 == "installing" && $4 == id { n = 0; on = 1; next }
+    '"$_LOG_MARK"' && $3 == "FAILED" && $4 == id { on = 0; next }
+    on { buf[n++] = $0 }
+    END { for (i = (n > 5 ? n - 5 : 0); i < n; i++) print "    " buf[i] }'
+}
+
+if [ "$DRY_RUN" != "1" ]; then
+  banner_launch || [ $? != 130 ] || _on_interrupt
+fi
+
+_installed="$(_count installed)"
+_skipped="$(_count already)"
+_failed=0
+for _id in $MACLIFT_FAILED; do _failed=$((_failed + 1)); done
+
+_box=()
+if [ "$DRY_RUN" = "1" ]; then
+  _box+=("Dry run: nothing was installed or linked")
+  _box+=("Would install: $((${#IDS[@]} - _skipped)) · already installed: $_skipped")
+else
+  _box+=("Installed: $_installed · skipped: $_skipped · failed: $_failed")
+fi
+for _id in $MACLIFT_FAILED; do
+  _box+=("✗ $_id")
+  while IFS= read -r _l; do
+    [ -n "$_l" ] && _box+=("$_l")
+  done <<EOT
+$(_fail_tail "$_id")
+EOT
+done
+_box+=("Log: $MACLIFT_LOG")
+_box+=("Next steps:")
+while IFS= read -r _l; do
+  [ -n "$_l" ] && _box+=("$_l")
+done <<EOT
+$(install_notes)
+EOT
+_box+=("  • restart your terminal")
+_box+=("  • in tmux press prefix I")
+# maclift is not on PATH: show the command to run it again, $HOME as ~.
+_run_path="$MACLIFT_DIR/maclift"
+case "$_run_path" in "$HOME"/*) _run_path='~'"${_run_path#"$HOME"}" ;; esac
+_box+=("  • run maclift again with: $_run_path")
+echo
+ui_box "${_box[@]}"
+
+log_line "maclift done (exit $INSTALL_RC)"
+exit "$INSTALL_RC"

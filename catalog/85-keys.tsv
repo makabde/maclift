@@ -1,0 +1,11 @@
+@id keys
+@title Keys & signing
+@description SSH key, signed commits and a second git identity
+@default off
+@required no
+brew	gh	on	GitHub command-line client, used to upload your keys
+brew	gnupg	on	GPG encryption and signing
+brew	pinentry-mac	on	GPG passphrase prompt for macOS
+script	ssh-key	on	Create an SSH key and add it to GitHub	keys/ssh-key.sh
+script	gpg-signing	on	Create a GPG key for signed commits and add it to GitHub	keys/gpg-signing.sh
+script	second-identity	off	Second git identity for one folder, such as ~/Work	keys/second-identity.sh

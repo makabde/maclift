@@ -1,0 +1,8 @@
+*.local
+.DS_Store
+dotfiles/shell/zsh/cache/
+*.zwc
+
+# Claude Code session notes (personal)
+.remember/
+.maclift-release

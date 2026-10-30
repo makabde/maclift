@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Test stub for ssh-add: logs the call to $MACLIFT_STUB_DIR/ssh-add.calls.
+echo "$*" >>"${MACLIFT_STUB_DIR:?}/ssh-add.calls"

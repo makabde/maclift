@@ -1,0 +1,20 @@
+@id core
+@title Core
+@description Shell, git, asdf and build dependencies
+@default on
+@required yes
+brew	git	on	Version control
+brew	zsh	on	The Z shell
+brew	spaceship	on	Minimal zsh prompt
+brew	terminal-notifier	on	Desktop notifications from the shell
+brew	asdf	on	Version manager for languages
+brew	coreutils	on	GNU core utilities
+brew	automake	on	Build dependency: makefile generator
+brew	autoconf	on	Build dependency: configure scripts
+brew	libtool	on	Build dependency: library tooling
+brew	pkg-config	on	Build dependency: compiler flag helper
+brew	openssl	on	Build dependency: TLS library
+brew	libyaml	on	Build dependency: YAML parser
+brew	readline	on	Build dependency: line editing library
+brew	unzip	on	Build dependency: zip extraction
+brew	curl	on	Build dependency: transfer tool

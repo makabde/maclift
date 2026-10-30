@@ -1,0 +1,13 @@
+# maclift user settings: copy to ~/.config/maclift/user.conf (maclift does
+# this for you on first run). Plain KEY="value" lines; never sourced.
+#MACLIFT_NAME="Ada Lovelace"
+#MACLIFT_EMAIL="ada@example.com"
+#MACLIFT_GITHUB="ada"
+#MACLIFT_SIGNING_KEY=""
+# Second git identity for one folder (the "Second git identity" item in
+# Keys & signing). The folder is an absolute path or starts with ~/.
+#MACLIFT_ALT_NAME="Ada Lovelace"
+#MACLIFT_ALT_EMAIL="ada@example.com"
+#MACLIFT_ALT_DIR="~/Work"
+# Optional, set by hand: sign commits in that folder with this GPG key.
+#MACLIFT_ALT_SIGNING_KEY=""

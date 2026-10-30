@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test stub for gpgconf: only logs calls to $MACLIFT_STUB_DIR/gpgconf.calls
+# (the real one would kill the real gpg-agent).
+d="${MACLIFT_STUB_DIR:?}"
+echo "$*" >>"$d/gpgconf.calls"

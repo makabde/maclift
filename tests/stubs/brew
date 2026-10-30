@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Test stub for brew. State lives in $MACLIFT_STUB_DIR:
+#   brew.calls      one line per invocation
+#   brew.installed  one name per line (seed it to fake pre-installed items)
+#   brew.leaves / brew.cask-list  output of `brew leaves` / `brew list --cask`
+#   brew.formulae / brew.casks  names `brew info --formula/--cask` knows
+#   brew.updatefail  if present, `brew update` fails
+#   brew.outdated / brew.cask-outdated  output of `brew outdated --formula/--cask --quiet`
+#   brew.prefix    output of `brew --prefix`
+# `brew install fail-me` fails unless $MACLIFT_STUB_DIR/fail-me.ok exists.
+d="${MACLIFT_STUB_DIR:?}"
+echo "$*" >>"$d/brew.calls"
+case "$1" in
+  --prefix)
+    cat "$d/brew.prefix" 2>/dev/null
+    exit 0
+    ;;
+  leaves)
+    cat "$d/brew.leaves" 2>/dev/null
+    exit 0
+    ;;
+  list)
+    shift
+    cask_only=0
+    while [ "${1:-}" != "" ]; do case "$1" in --cask) cask_only=1; shift ;; --*) shift ;; *) break ;; esac; done
+    if [ -z "${1:-}" ]; then
+      [ "$cask_only" = 1 ] && cat "$d/brew.cask-list" 2>/dev/null
+      exit 0
+    fi
+    grep -Fxq "$1" "$d/brew.installed" 2>/dev/null
+    ;;
+  install)
+    shift
+    [ "${1:-}" = "--cask" ] && shift
+    [ "${1:-}" = "--" ] && shift
+    echo "stub: installing $1"
+    [ "$1" = "fail-me" ] && [ ! -e "$d/fail-me.ok" ] && { echo "stub: boom" >&2; exit 1; }
+    echo "$1" >>"$d/brew.installed"
+    ;;
+  info)
+    shift
+    kind=""
+    while [ "${1:-}" != "" ]; do
+      case "$1" in
+        --formula) kind=formulae; shift ;;
+        --cask) kind=casks; shift ;;
+        --) shift; break ;;
+        --*) shift ;;
+        *) break ;;
+      esac
+    done
+    [ -n "$kind" ] && grep -Fxq "$1" "$d/brew.$kind" 2>/dev/null
+    ;;
+  outdated)
+    shift
+    f=brew.outdated
+    for a in "$@"; do [ "$a" = "--cask" ] && f=brew.cask-outdated; done
+    cat "$d/$f" 2>/dev/null
+    exit 0
+    ;;
+  upgrade)
+    shift
+    [ "${1:-}" = "--cask" ] && shift
+    [ "${1:-}" = "--" ] && shift
+    echo "stub: upgrading $1"
+    [ "$1" = "fail-me" ] && { echo "stub: boom" >&2; exit 1; }
+    exit 0
+    ;;
+  update)
+    [ -e "$d/brew.updatefail" ] && { echo "stub: update failed" >&2; exit 1; }
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        shell: bash
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # find, not globstar: keeps the same command usable under bash 3.2.
+          # Warnings and errors fail the job; info-level notes do not.
+          find maclift lib tests scripts install -type f \( -name maclift -o -name install -o -name '*.sh' \) -print0 \
+            | xargs -0 shellcheck -x --severity=warning
+
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Unit tests (bash 3.2)
+        shell: bash
+        env:
+          # Empty on forks and PRs from forks; the leak scan then prints a notice and skips.
+          MACLIFT_PRIVATE_PATTERNS: ${{ secrets.MACLIFT_PRIVATE_PATTERNS }}
+        run: /bin/bash tests/run_unit_tests.sh
+      - name: Integration tests
+        shell: bash
+        run: bash tests/run_integration_tests.sh
+      - name: Dry run
+        shell: bash
+        run: |
+          export MACLIFT_HOME="$RUNNER_TEMP/home"
+          mkdir -p "$MACLIFT_HOME/.config/maclift"
+          printf 'MACLIFT_NAME="CI Runner"\nMACLIFT_EMAIL="ci@example.com"\n' \
+            > "$MACLIFT_HOME/.config/maclift/user.conf"
+          MACLIFT_PLAIN=1 ./maclift --dry-run -y
+
+  install:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Real install of a small selection
+        shell: bash
+        run: |
+          # MACLIFT_HOME points at a scratch directory, so this never touches the runner HOME.
+          # With -y the saved selection is used as written (required core items
+          # are added on interactive save, not on load), plus the Brewfile.local
+          # extra. cowsay is not preinstalled on GitHub macOS images, so its
+          # presence proves maclift installed it.
+          export MACLIFT_HOME="$RUNNER_TEMP/home"
+          mkdir -p "$MACLIFT_HOME/.config/maclift"
+          printf 'MACLIFT_NAME="CI Runner"\nMACLIFT_EMAIL="ci@example.com"\n' \
+            > "$MACLIFT_HOME/.config/maclift/user.conf"
+          printf 'MACLIFT_ITEMS="dotfiles:git"\n' \
+            > "$MACLIFT_HOME/.config/maclift/selection.conf"
+          printf 'brew "cowsay"\n' \
+            > "$MACLIFT_HOME/.config/maclift/Brewfile.local"
+          ! command -v cowsay
+          MACLIFT_PLAIN=1 ./maclift -y
+          grep -F 'installed brew:cowsay' "$MACLIFT_HOME"/.config/maclift/logs/*.log
+          command -v cowsay
+          test -e "$MACLIFT_HOME/.gitconfig"

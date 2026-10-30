@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Test stub for mas: `mas list` prints $MACLIFT_STUB_DIR/mas.list.
+cat "${MACLIFT_STUB_DIR:?}/mas.list" 2>/dev/null
+exit 0

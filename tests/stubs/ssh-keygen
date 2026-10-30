@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Test stub for ssh-keygen: writes fake key files at the -f path and logs the call
+# to $MACLIFT_STUB_DIR/ssh-keygen.calls.
+echo "$*" >>"${MACLIFT_STUB_DIR:?}/ssh-keygen.calls"
+f=""
+while [ $# -gt 0 ]; do
+  case "$1" in -f) f="$2"; shift ;; esac
+  shift
+done
+[ -n "$f" ] || exit 1
+echo "stub private key" >"$f"
+echo "stub public key" >"$f.pub"

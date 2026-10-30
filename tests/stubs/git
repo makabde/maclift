@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Test stub for git. State lives in $MACLIFT_STUB_DIR:
+#   git.calls       one line per invocation (without the leading -C <dir>)
+#   A leading --no-optional-locks is accepted and ignored.
+#   git.notrepo     if present, `rev-parse --is-inside-work-tree` fails
+#   git.dirty       if present, `status --porcelain` prints its contents
+#   git.noupstream  if present, `rev-parse @{u}` fails
+#   git.head        what `rev-parse HEAD` prints (default aaa)
+#   git.pullfail    if present, `pull` fails; otherwise it writes bbb to git.head
+#   git.fetchfail   if present, `fetch` fails
+#   init, remote, checkout and branch are logged and succeed.
+d="${MACLIFT_STUB_DIR:?}"
+[ "${1:-}" = "-C" ] && shift 2
+echo "$*" >>"$d/git.calls"
+[ "${1:-}" = "--no-optional-locks" ] && shift
+case "$1" in
+  rev-parse)
+    case "$2" in
+      --is-inside-work-tree)
+        [ -e "$d/git.notrepo" ] && exit 128
+        echo true
+        ;;
+      '@{u}')
+        [ -e "$d/git.noupstream" ] && exit 128
+        echo origin/main
+        ;;
+      HEAD)
+        cat "$d/git.head" 2>/dev/null || echo aaa
+        ;;
+    esac
+    ;;
+  status)
+    [ -e "$d/git.dirty" ] && cat "$d/git.dirty"
+    exit 0
+    ;;
+  pull)
+    [ -e "$d/git.pullfail" ] && { echo "stub: not possible to fast-forward" >&2; exit 1; }
+    echo bbb >"$d/git.head"
+    ;;
+  fetch)
+    [ -e "$d/git.fetchfail" ] && { echo "stub: could not resolve host" >&2; exit 128; }
+    ;;
+  init | remote | checkout | branch) ;;
+esac
+exit 0

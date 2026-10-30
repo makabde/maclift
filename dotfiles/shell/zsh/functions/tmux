@@ -1,0 +1,34 @@
+# `tmux` with no arguments and no tmux server running: restore the last
+# saved sessions (tmux-resurrect) and attach to the one you were in, instead
+# of opening an empty session. Anything else is plain tmux.
+
+function tmux() {
+    local restore=~/.tmux/plugins/tmux-resurrect/scripts/restore.sh
+    local saved=~/.local/share/tmux/resurrect/last
+
+    if (( $# )) || [[ ! -x $restore || ! -e $saved ]] ||
+        command tmux has-session 2>/dev/null; then
+        command tmux "$@"
+        return
+    fi
+
+    # A placeholder session keeps the server up while the restore runs.
+    command tmux new-session -d -s _restoring || return
+    command tmux run-shell "$restore"
+
+    if (( $(command tmux list-sessions | wc -l) > 1 )); then
+        command tmux kill-session -t "=_restoring"
+        # The session you were attached to when the save was taken.
+        local last
+        last=$(awk -F'\t' '$1 == "state" { print $2 }' "$saved")
+        if [[ -n $last ]] && command tmux has-session -t "=$last" 2>/dev/null; then
+            command tmux attach -t "=$last"
+        else
+            command tmux attach
+        fi
+    else
+        # Nothing was restored: keep the placeholder as a normal session.
+        command tmux rename-session -t "=_restoring" 1
+        command tmux attach -t "=1"
+    fi
+}

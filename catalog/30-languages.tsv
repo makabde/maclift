@@ -1,0 +1,17 @@
+@id languages
+@title Languages
+@description Runtimes via asdf, plus build extras
+@default on
+@required no
+asdf	erlang	on	Erlang/OTP runtime	https://github.com/asdf-vm/asdf-erlang.git
+asdf	elixir	on	Elixir language	https://github.com/asdf-vm/asdf-elixir.git
+asdf	nodejs	on	Node.js runtime	https://github.com/asdf-vm/asdf-nodejs.git
+asdf	python	on	Python interpreter	https://github.com/asdf-community/asdf-python.git
+brew	uv	on	Fast Python package manager
+brew	xz	on	Compression library needed to build Python
+brew	wxwidgets	off	GUI toolkit for Erlang observer
+brew	libxslt	off	XSLT library for Phoenix builds
+brew	unixodbc	off	ODBC library for Erlang builds
+brew	imagemagick	off	Image processing
+brew	ffmpeg	off	Video processing
+brew	vips	off	Fast image processing library

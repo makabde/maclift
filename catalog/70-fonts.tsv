@@ -1,0 +1,8 @@
+@id fonts
+@title Fonts
+@description Programming fonts
+@default on
+@required no
+cask	font-anonymous-pro	on	Anonymous Pro monospace font
+cask	font-fira-code	on	Fira Code font with ligatures
+cask	font-hack	on	Hack monospace font

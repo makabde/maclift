@@ -1,0 +1,10 @@
+@id dev-apps
+@title Developer apps
+@description Terminal, editor and design tools
+@default on
+@required no
+cask	iterm2	on	Terminal emulator
+cask	visual-studio-code	on	Code editor	skip-if-app:/Applications/Visual Studio Code.app
+cask	figma	on	Interface design tool
+cask	docker-desktop	off	Containers on your Mac
+cask	insomnia	off	API client

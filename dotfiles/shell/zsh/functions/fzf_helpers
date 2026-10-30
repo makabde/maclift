@@ -1,0 +1,120 @@
+# FZF Helper Functions for Enhanced Productivity
+# These are shell functions for interactive terminal use, not code execution
+
+# ============================================================================
+# Git Integration
+# ============================================================================
+
+# Interactive git branch checkout
+gcof() {
+    local branches branch
+    branches=$(git branch --all | grep -v HEAD) &&
+    branch=$(echo "$branches" |
+             fzf-tmux -d $(( 2 + $(wc -l <<< "$branches") )) +m) &&
+    git checkout $(echo "$branch" | sed "s/.* //" | sed "s#remotes/[^/]*/##")
+}
+
+# Interactive git log browser
+glf() {
+    git log --graph --color=always \
+            --format="%C(auto)%h%d %s %C(black)%C(bold)%cr" "$@" |
+    fzf --ansi --no-sort --reverse --tiebreak=index --bind=ctrl-s:toggle-sort \
+        --bind "ctrl-m:execute:
+                (grep -o '[a-f0-9]\{7\}' | head -1 |
+                xargs -I % sh -c 'git show --color=always % | less -R') << 'FZF-EOF'
+                {}
+FZF-EOF"
+}
+
+# Interactive git add
+gaf() {
+    git status --short |
+    fzf --multi --preview 'git diff --color=always {2}' |
+    awk '{print $2}' |
+    xargs git add
+}
+
+# ============================================================================
+# File/Directory Navigation
+# ============================================================================
+
+# cd into selected directory
+cdf() {
+    local dir
+    dir=$(fd --type d --hidden --follow --exclude .git 2> /dev/null | fzf +m) &&
+    cd "$dir"
+}
+
+# Open file in default editor
+vf() {
+    local file
+    file=$(fzf +m -q "$1") && ${EDITOR:-vim} "$file"
+}
+
+# ============================================================================
+# Process Management
+# ============================================================================
+
+# Interactive process kill
+fkill() {
+    local pid
+    pid=$(ps -ef | sed 1d | fzf -m | awk '{print $2}')
+
+    if [ "x$pid" != "x" ]; then
+        echo $pid | xargs kill -${1:-9}
+    fi
+}
+
+# ============================================================================
+# Docker Integration
+# ============================================================================
+
+# Interactive docker container exec
+dexec() {
+    local container
+    container=$(docker ps --format '{{.Names}}' | fzf +m) &&
+    docker exec -it "$container" "${@:-/bin/sh}"
+}
+
+# Interactive docker logs
+dlogs() {
+    local container
+    container=$(docker ps --format '{{.Names}}' | fzf +m) &&
+    docker logs -f "$container"
+}
+
+# ============================================================================
+# Mix/Phoenix Integration
+# ============================================================================
+
+# Interactive mix task runner
+mixf() {
+    local task
+    task=$(mix help | grep "^mix " | fzf +m | awk '{print $2}') &&
+    mix $task
+}
+
+# Interactive mix test file selector
+mtf() {
+    local test_file
+    test_file=$(fd --type f _test.exs$ | fzf +m --preview 'bat --color=always {}') &&
+    mix test "$test_file"
+}
+
+# ============================================================================
+# Project Switcher
+# ============================================================================
+
+# Quick project switcher
+proj() {
+    local project_dir="${PROJECT_DIR:-$HOME/code}"
+    local project
+
+    if [ ! -d "$project_dir" ]; then
+        echo "Project directory $project_dir not found"
+        return 1
+    fi
+
+    project=$(fd --max-depth 3 --type d . "$project_dir" | fzf +m) &&
+    cd "$project"
+}

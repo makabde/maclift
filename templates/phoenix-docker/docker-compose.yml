@@ -1,0 +1,40 @@
+# Phoenix Docker Compose Template
+# Copy this file to new Phoenix projects for local development
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${PROJECT_NAME:-app}_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${PROJECT_NAME:-app}_dev
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME:-app}_redis
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+
+  mailcatcher:
+    image: sj26/mailcatcher:latest
+    container_name: ${PROJECT_NAME:-app}_mailcatcher
+    ports:
+      - "127.0.0.1:${MAILCATCHER_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILCATCHER_HTTP_PORT:-1080}:1080"
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Test stub for gh. Calls go to $MACLIFT_STUB_DIR/gh.calls. `gh auth status`
+# succeeds only if $MACLIFT_STUB_DIR/gh.loggedin exists. `ssh-key add` and
+# `gpg-key add` (stdin is read) fail if $MACLIFT_STUB_DIR/gh.addfail exists.
+# `gpg-key list` prints $MACLIFT_STUB_DIR/gh.gpgkeys (if any).
+d="${MACLIFT_STUB_DIR:?}"
+echo "$*" >>"$d/gh.calls"
+case "$1 $2" in
+  "auth status") [ -e "$d/gh.loggedin" ] ;;
+  "gpg-key add") cat >"$d/gh.gpgkey"; [ ! -e "$d/gh.addfail" ] ;;
+  "ssh-key add") [ ! -e "$d/gh.addfail" ] ;;
+  "gpg-key list") cat "$d/gh.gpgkeys" 2>/dev/null || true ;;
+  *) exit 0 ;;
+esac

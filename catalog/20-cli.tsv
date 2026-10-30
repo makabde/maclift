@@ -1,0 +1,18 @@
+@id cli
+@title Command-line tools
+@description Modern replacements for everyday tools
+@default on
+@required no
+brew	shellcheck	on	Lint shell scripts
+brew	watchman	on	File watching service
+brew	bat	on	Better cat with syntax highlighting
+brew	eza	on	Better ls with git integration
+brew	fd	on	Better find
+brew	ripgrep	on	Better grep
+brew	zoxide	on	Smarter cd
+brew	fzf	on	Fuzzy finder
+brew	delta	on	Beautiful git diffs
+brew	lazygit	on	Terminal git UI
+brew	jq	on	JSON processor
+brew	tlrc	on	Simplified man pages
+brew	wget	off	File downloader

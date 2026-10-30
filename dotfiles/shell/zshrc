@@ -1,0 +1,64 @@
+# ============================================================================
+# PATH
+# ============================================================================
+export PATH="$HOME/.local/bin:$PATH"
+
+# ============================================================================
+# Custom functions
+# ============================================================================
+for function in ~/.zsh/functions/*; do
+  source $function
+done
+
+# ============================================================================
+# Configs loader
+# Loads files from ~/.zsh/configs/{pre,,post} in that order.
+# ============================================================================
+_load_settings() {
+  _dir="$1"
+  if [ -d "$_dir" ]; then
+    if [ -d "$_dir/pre" ]; then
+      for config in "$_dir"/pre/**/*~*.zwc(N-.); do
+        . $config
+      done
+    fi
+
+    for config in "$_dir"/**/*(N-.); do
+      case "$config" in
+        "$_dir"/(pre|post)/*|*.zwc)
+          :
+          ;;
+        *)
+          . $config
+          ;;
+      esac
+    done
+
+    if [ -d "$_dir/post" ]; then
+      for config in "$_dir"/post/**/*~*.zwc(N-.); do
+        . $config
+      done
+    fi
+  fi
+}
+# Note: completions (fpath + compinit) are handled inside the staged configs:
+#   ~/.zsh/configs/pre/completions.zsh  - registers fpath entries
+#   ~/.zsh/configs/post/completion.zsh  - runs compinit with daily cache
+_load_settings "$HOME/.zsh/configs"
+
+# ============================================================================
+# Prompt
+# ============================================================================
+# Disable spaceship async to avoid zpty "device not configured" errors on macOS
+# when many subshells are active (Claude Code, tmux, Docker, etc.).
+export SPACESHIP_PROMPT_ASYNC=false
+source $(brew --prefix)/opt/spaceship/spaceship.zsh
+
+# ============================================================================
+# Aliases & local overrides
+# ============================================================================
+[[ -f ~/.aliases ]] && source ~/.aliases
+[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+
+test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
+

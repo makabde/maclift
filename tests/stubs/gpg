@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Test stub for gpg. Calls go to $MACLIFT_STUB_DIR/gpg.calls. The keyring is
+# $MACLIFT_STUB_DIR/gpg.secret: one key per line,
+# "<fingerprint> <email> [validity] [uid-validity]" (validity: u valid
+# (default), e expired, r revoked; uid-validity defaults to the key's). Lookup by an argument containing "@" matches the email as a
+# SUBSTRING (like real gpg); any other argument must equal the fingerprint.
+#   --list-secret-keys [--with-colons] -- <email|fingerprint>
+#       succeeds if a line matches; with --with-colons prints sec/fpr records
+#   --quick-generate-key "<uid>" ...  adds FAKEFPR0000000000000000000000000000NEW
+#       with the uid's email
+#   --armor --export <fpr>  prints a fake armored block
+# Each call also appends the GNUPGHOME it saw to $MACLIFT_STUB_DIR/gpg.gnupghome.
+d="${MACLIFT_STUB_DIR:?}"
+echo "$*" >>"$d/gpg.calls"
+echo "${GNUPGHOME:-}" >>"$d/gpg.gnupghome"
+colons=0
+case " $* " in *" --with-colons "*) colons=1 ;; esac
+case "$*" in
+  *--list-secret-keys*)
+    for last; do :; done
+    out="$(awk -v k="$last" 'BEGIN { m = index(k, "@") }
+      { v = ($3 == "" ? "u" : $3); uv = ($4 == "" ? v : $4) }
+      m ? index($2, k) : $1 == k { print $1 " " $2 " " v " " uv }' "$d/gpg.secret" 2>/dev/null)"
+    [ -n "$out" ] || exit 2
+    if [ "$colons" = 1 ]; then
+      printf '%s\n' "$out" | while read -r fpr mail v uv; do
+        echo "sec:$v:255:22:KEYID:1700000000:::u:::scESC:::+:::23::0:"
+        echo "fpr:::::::::$fpr:"
+        echo "grp:::::::::GRIP:"
+        echo "uid:$uv::::1700000000::HASH::Someone <$mail>::::::::::0:"
+      done
+    fi
+    ;;
+  *--quick-generate-key*)
+    uid="$2"
+    email="${uid##*<}"; email="${email%>*}"
+    echo "FAKEFPR0000000000000000000000000000NEW $email" >>"$d/gpg.secret"
+    ;;
+  *--export*)
+    echo "-----BEGIN PGP PUBLIC KEY BLOCK-----"
+    ;;
+  *) exit 0 ;;
+esac

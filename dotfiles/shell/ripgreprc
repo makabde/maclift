@@ -1,0 +1,35 @@
+# Ripgrep configuration file
+# This file is sourced via RIPGREP_CONFIG_PATH in modern-cli.zsh
+
+# Search hidden files and directories
+--hidden
+
+# Follow symbolic links
+--follow
+
+# Smart case: case-insensitive if all lowercase, case-sensitive otherwise
+--smart-case
+
+# Use glob patterns instead of regex (more user-friendly)
+--glob=!.git/*
+--glob=!node_modules/*
+--glob=!_build/*
+--glob=!deps/*
+--glob=!.elixir_ls/*
+--glob=!*.beam
+--glob=!*.pyc
+--glob=!*.so
+--glob=!*.dylib
+--glob=!.DS_Store
+--glob=!*.swp
+--glob=!*.swo
+--glob=!*~
+
+# Set max columns for context (prevents super long lines)
+--max-columns=150
+
+# Use colors always (for piping to other tools)
+--colors=line:style:bold
+--colors=path:fg:cyan
+--colors=match:fg:yellow
+--colors=match:style:bold

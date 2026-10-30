@@ -1,0 +1,13 @@
+@id productivity
+@title Productivity
+@description Window management, launchers and chat
+@default on
+@required no
+cask	appcleaner	on	Uninstall apps completely
+cask	choosy	on	Choose which browser opens links
+cask	raycast	on	Launcher and productivity tool
+cask	rectangle	on	Window snapping
+cask	stats	on	Menu bar system monitor
+cask	slack	off	Team chat
+cask	discord	off	Voice and text chat
+cask	notion	off	Notes and docs

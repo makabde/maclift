@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+#
+# maclift one-line installer. Downloads a tagged maclift release into
+# ~/maclift (or $MACLIFT_DIR) and starts it:
+#
+#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.0.0/install | bash
+#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.0.0/install | bash -s -- -y
+#
+# Arguments are passed on to maclift. A folder that already holds maclift is
+# reused as is. maclift turns the downloaded folder into a git clone once git
+# is available (see .maclift-release).
+# bash 3.2 compatible. Everything runs from main, called on the last line, so
+# a download cut short runs nothing.
+#
+# Test overrides: MACLIFT_UNAME (instead of `uname -s`), MACLIFT_CURL,
+# MACLIFT_HAS_TTY (1/0), MACLIFT_TTY (default /dev/tty).
+
+set -euo pipefail
+
+MACLIFT_REPO="${MACLIFT_REPO:-makabde/maclift}"
+MACLIFT_TAG="${MACLIFT_TAG:-v1.0.0}"
+
+_mi_tmp=""
+_mi_made=""
+_mi_parent=""
+
+_mi_fail() {
+  echo "✗ $1" >&2
+  exit 1
+}
+
+# Removes the temporary folder, then the parent folders this run created
+# (rmdir only: a folder that isn't empty stays). Returns the status it was
+# called with, so as an EXIT trap it keeps the script's exit status.
+_mi_cleanup() {
+  local rc=$? d
+  [ -z "$_mi_tmp" ] || rm -rf "$_mi_tmp"
+  _mi_tmp=""
+  if [ -n "$_mi_made" ]; then
+    d="$_mi_parent"
+    # A folder mkdir never got to counts as removed, so a partial mkdir -p
+    # is undone too.
+    while { rmdir "$d" 2>/dev/null || [ ! -e "$d" ]; } && [ "$d" != "$_mi_made" ]; do
+      d="$(dirname "$d")"
+    done
+    _mi_made=""
+  fi
+  return "$rc"
+}
+
+_mi_has_tty() {
+  if [ -n "${MACLIFT_HAS_TTY:-}" ]; then [ "$MACLIFT_HAS_TTY" = 1 ]; return; fi
+  { : <"${MACLIFT_TTY:-/dev/tty}"; } 2>/dev/null
+}
+
+# Downloads and unpacks the release into "$1", which must not exist. On any
+# failure "$1" is left absent.
+_mi_download() {
+  local dir="$1" parent url top entry n=0
+  url="https://github.com/$MACLIFT_REPO/archive/refs/tags/$MACLIFT_TAG.tar.gz"
+
+  # The temporary folder sits next to "$1", on the same volume, so the final
+  # mv is a rename.
+  parent="$(dirname "$dir")"
+
+  # Armed before anything is created, so a signal can't strand a folder.
+  trap _mi_cleanup EXIT
+  trap '_mi_cleanup || :; exit 130' INT TERM HUP
+
+  # The topmost missing parent, removed again if the run fails.
+  _mi_parent="$parent"
+  local p="$parent"
+  while [ ! -e "$p" ] && [ ! -L "$p" ]; do
+    _mi_made="$p"
+    p="$(dirname "$p")"
+  done
+  mkdir -p "$parent" || _mi_fail "could not create $parent"
+  _mi_tmp="$(mktemp -d "$parent/.maclift-install.XXXXXX")" ||
+    _mi_fail "could not make a temporary folder in $parent"
+
+  echo "Downloading maclift ${MACLIFT_TAG}…" >&2
+  "${MACLIFT_CURL:-curl}" -fsSL -o "$_mi_tmp/release.tar.gz" "$url" ||
+    _mi_fail "could not download $url (check your internet connection)"
+
+  mkdir "$_mi_tmp/x"
+  tar -xzf "$_mi_tmp/release.tar.gz" -C "$_mi_tmp/x" ||
+    _mi_fail "the download is not a maclift release"
+
+  # Exactly one top folder, holding maclift.
+  for entry in "$_mi_tmp/x"/* "$_mi_tmp/x"/.[!.]* "$_mi_tmp/x"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    n=$((n + 1))
+    top="$entry"
+  done
+  if [ "$n" -ne 1 ] || [ -L "$top" ] || [ ! -d "$top" ] || [ ! -f "$top/maclift" ]; then
+    _mi_fail "the download is not a maclift release"
+  fi
+
+  # The marker goes in before the move, so "$1" never exists without it.
+  printf 'MACLIFT_RELEASE_REPO="%s"\nMACLIFT_RELEASE_TAG="%s"\n' \
+    "$MACLIFT_REPO" "$MACLIFT_TAG" >"$top/.maclift-release" ||
+    _mi_fail "could not write the .maclift-release marker"
+
+  # Checked again just before the move: mv into an existing folder would nest.
+  if [ -e "$dir" ] || [ -L "$dir" ]; then
+    _mi_fail "$dir already exists and isn't maclift; move it or set MACLIFT_DIR"
+  fi
+  mv "$top" "$dir" || _mi_fail "could not move maclift to $dir"
+  _mi_made=""
+
+  _mi_cleanup
+  trap - EXIT INT TERM HUP
+}
+
+main() {
+  local os dir arg yes=0
+
+  os="${MACLIFT_UNAME:-$(uname -s)}"
+  [ "$os" = "Darwin" ] || _mi_fail "maclift is for macOS"
+
+  # Only plain names: these end up in a URL and in the marker file.
+  case "$MACLIFT_REPO" in
+    */*/* | /* | */ | *[!A-Za-z0-9._/-]*) _mi_fail "bad MACLIFT_REPO: $MACLIFT_REPO" ;;
+    */*) ;;
+    *) _mi_fail "bad MACLIFT_REPO: $MACLIFT_REPO" ;;
+  esac
+  case "$MACLIFT_TAG" in
+    '' | -* | *[!A-Za-z0-9._-]*) _mi_fail "bad MACLIFT_TAG: $MACLIFT_TAG" ;;
+  esac
+
+  for arg in "$@"; do
+    case "$arg" in -y | --yes) yes=1 ;; esac
+  done
+
+  # Decided first, so a run that can't start downloads nothing.
+  if ! _mi_has_tty && [ "$yes" != 1 ]; then
+    _mi_fail "no terminal: run it from Terminal, or add -y to reuse saved answers"
+  fi
+
+  dir="${MACLIFT_DIR:-$HOME/maclift}"
+  # A plain path only: with . or .. the cleanup could not tell which
+  # folders this run created.
+  case "/$dir/" in
+    */./* | */../*) _mi_fail "MACLIFT_DIR can't contain . or .. parts: $dir" ;;
+  esac
+  if [ -f "$dir/maclift" ] && [ -f "$dir/VERSION" ]; then
+    echo "Using maclift in $dir" >&2
+  elif [ -e "$dir" ] || [ -L "$dir" ]; then
+    _mi_fail "$dir already exists and isn't maclift; move it or set MACLIFT_DIR"
+  else
+    _mi_download "$dir"
+    echo "✓ maclift $MACLIFT_TAG is in $dir" >&2
+  fi
+
+  if _mi_has_tty; then
+    exec bash "$dir/maclift" "$@" <"${MACLIFT_TTY:-/dev/tty}"
+  fi
+  exec bash "$dir/maclift" "$@"
+}
+
+main "$@"

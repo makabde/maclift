@@ -1,0 +1,10 @@
+@id configs
+@title Dotfiles
+@description Link config files into your home folder
+@default on
+@required no
+dotfiles	zsh	on	zsh config and prompt setup	shell/zshrc shell/zprofile shell/zsh
+dotfiles	shell-extras	on	aliases, curlrc, inputrc, ripgreprc	shell/aliases shell/curlrc shell/hushlogin shell/inputrc shell/ripgreprc
+dotfiles	git	on	git config, attributes and global ignore	git/gitconfig git/gitattributes git/gitignore
+dotfiles	iex	on	IEx (Elixir shell) config	shell/iex.exs
+dotfiles	nvim	on	Neovim config	nvim
