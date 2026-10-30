@@ -30,6 +30,15 @@ brew	ripgrep	on	Better grep
 That is all. The picker, `maclift add` and `maclift snapshot` read the catalog,
 so there is no other place to edit.
 
+### Script items that need a runtime
+
+An item script under `scripts/items/` normally exits 0 on success and
+non-zero on failure. If it cannot run because a runtime is missing (for
+example `mix` for hex), it writes one word naming what it needs (such as
+`elixir`) to the file in `$MACLIFT_NEED_FILE` and exits 3. maclift then shows
+"skipped (needs elixir)", not a failure. Shared helpers for this, and for
+putting the right tools on `PATH`, are in `lib/toolchain.sh`.
+
 ## Run the tests
 
 Run the unit files one at a time, under both shells:
@@ -55,7 +64,9 @@ shellcheck -x --severity=warning install
 ```
 
 Tests never touch your real home or the network. They use a temporary
-`MACLIFT_HOME` and the stubs in `tests/stubs`.
+`MACLIFT_HOME` and the stubs in `tests/stubs`. Toolchain tests point
+`MACLIFT_MIX`, `MACLIFT_ELIXIR`, `MACLIFT_UV`, `MACLIFT_PNPM` and
+`MACLIFT_NODE` at stubs there.
 
 ## The bash 3.2 rule
 

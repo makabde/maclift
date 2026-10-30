@@ -48,7 +48,11 @@ You choose groups, then items inside each group.
 
 - **Core**: shell, git, asdf and build dependencies (always on).
 - **Command-line tools**: modern replacements for everyday tools.
-- **Languages**: runtimes via asdf, plus build extras.
+- **Languages**: runtimes via asdf, plus build extras. Elixir comes with hex,
+  rebar and the Phoenix generator (`mix phx.new`); JavaScript with pnpm;
+  Python is managed by uv. If a tool needs a runtime that is not installed,
+  it shows as "skipped (needs X)" instead of failing. `maclift update` keeps
+  the Elixir tools working after an Elixir or Erlang upgrade.
 - **Developer apps**: terminal, editor and design tools.
 - **Productivity**: window management, launchers and chat.
 - **Browsers**: web browsers.
