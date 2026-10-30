@@ -6,3 +6,4 @@ dotfiles/shell/zsh/cache/
 # Claude Code session notes (personal)
 .remember/
 .maclift-release
+.superpowers/
