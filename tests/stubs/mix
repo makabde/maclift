@@ -11,6 +11,7 @@ case "$1" in
     done <"$arch"
     ;;
   local.hex)
+    [ -n "$dir" ] && [ -e "$dir/mix.fail-hex" ] && exit 1
     [ -n "$dir" ] && echo "hex-2.2.1" >>"$arch"
     ;;
   archive.install)

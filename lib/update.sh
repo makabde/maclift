@@ -13,6 +13,7 @@ UPDATE_FAILED=""
 UPDATE_PIN_FAILED=""
 UPDATE_PIN_UPGRADED=0
 UPDATE_PIN_LISTED=0
+UPDATE_PIN_UPGRADED_NAMES=""
 
 # _update_git <git args>...: git on the maclift clone.
 _update_git() { "${MACLIFT_GIT:-git}" -C "$MACLIFT_DIR" "$@"; }
@@ -154,6 +155,32 @@ $(_update_pin_plugins)
 EOT
 }
 
+# update_toolchains_refresh <dry_run:0|1>
+# asdf-elixir keeps MIX_HOME per install, so a new Elixir (or Erlang) pin has
+# no hex, rebar or phx_new. After such an upgrade, reinstalls the selected ones
+# (install_run skips any whose --check already passes). A failure is added to
+# UPDATE_PIN_FAILED and returns 1; it never reverts the pin.
+update_toolchains_refresh() {
+  local dry="$1" id ids=() sel nl='
+'
+  case " $UPDATE_PIN_UPGRADED_NAMES " in
+    *" erlang "* | *" elixir "*) ;;
+    *) return 0 ;;
+  esac
+  sel="$nl$(selection_load)$nl"
+  for id in script:hex script:rebar script:phx_new; do
+    case "$sel" in *"$nl$id$nl"*) ids+=("$id") ;; esac
+  done
+  [ "${#ids[@]}" -gt 0 ] || return 0
+  if install_run "$dry" "${ids[@]}"; then
+    return 0
+  fi
+  for id in $MACLIFT_FAILED; do
+    UPDATE_PIN_FAILED="${UPDATE_PIN_FAILED:+$UPDATE_PIN_FAILED }$id"
+  done
+  return 1
+}
+
 # update_pins <dry_run:0|1>
 # Offers each newer pin. A dry run or -y only lists them. An accepted pin is
 # stored, installed, and reverted to the old version if the install fails.
@@ -165,6 +192,7 @@ update_pins() {
   UPDATE_PIN_FAILED=""
   UPDATE_PIN_UPGRADED=0
   UPDATE_PIN_LISTED=0
+  UPDATE_PIN_UPGRADED_NAMES=""
   # The loop reads plugin names on fd 3 so prompts and installs keep stdin.
   while IFS= read -r plugin <&3; do
     [ -n "$plugin" ] || continue
@@ -189,6 +217,7 @@ update_pins() {
     touched=1
     if install_run 0 "asdf:$plugin"; then
       UPDATE_PIN_UPGRADED=$((UPDATE_PIN_UPGRADED + 1))
+      UPDATE_PIN_UPGRADED_NAMES="${UPDATE_PIN_UPGRADED_NAMES:+$UPDATE_PIN_UPGRADED_NAMES }$plugin"
     else
       _pins_store "$plugin" "$old"
       echo "✗ $plugin $new failed to install; kept $old"
@@ -207,6 +236,7 @@ EOT
   if [ "$touched" = "1" ]; then
     pins_apply 0 >>"${MACLIFT_LOG:-/dev/null}" 2>&1 || log_line "could not apply asdf pins"
   fi
+  update_toolchains_refresh "$dry" || rc=1
   return "$rc"
 }
 

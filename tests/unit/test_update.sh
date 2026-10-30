@@ -36,6 +36,7 @@ maclift_init_paths
 mkdir -p "$MACLIFT_CONFIG_DIR"
 STUB="$(mktemp -d)"
 export MACLIFT_STUB_DIR="$STUB" MACLIFT_BREW="$PROJECT_ROOT/tests/stubs/brew" MACLIFT_GIT="$PROJECT_ROOT/tests/stubs/git" MACLIFT_PLAIN=1
+export MACLIFT_MIX="$PROJECT_ROOT/tests/stubs/mix" MACLIFT_ELIXIR="$PROJECT_ROOT/tests/stubs/elixir"
 
 reset_stub() {
   rm -f "$STUB"/brew.* "$STUB"/git.*
@@ -226,8 +227,56 @@ test_dry_run_box() {
   assert_contains "$out" "== Would upgrade pins: 0 ==" "none to offer: 0"
 }
 
+test_elixir_upgrade_reinstalls_tools() {
+  test_suite "update_pins reinstalls Elixir tools"
+  reset_stub
+  rm -f "$STUB"/mix.*
+  set_pins "erlang 27.3.4" "elixir 1.18.4-otp-26"
+  selection_save asdf:elixir script:hex script:phx_new
+  : >"$STUB/mix.archives"
+  local rc=0
+  printf 'y\n' | update_pins 0 >"$STUB/out" 2>&1 || rc=$?
+  assert_equals "0" "$rc" "returns 0"
+  assert_equals "1.18.4-otp-27" "$(pins_get elixir)" "elixir upgraded"
+  assert_command_succeeds "grep -qx 'local.hex --force' '$STUB/mix.calls'" "hex reinstalled"
+  assert_command_succeeds "grep -qx 'archive.install hex phx_new --force' '$STUB/mix.calls'" "phx_new reinstalled"
+  assert_command_fails "grep -q local.rebar '$STUB/mix.calls'" "rebar not selected"
+}
+
+test_node_upgrade_leaves_tools() {
+  test_suite "update_pins leaves Elixir tools after a node upgrade"
+  reset_stub
+  rm -f "$STUB"/mix.*
+  set_pins "nodejs 24.3.0"
+  selection_save asdf:nodejs script:hex script:phx_new
+  : >"$STUB/mix.archives"
+  printf 'y\n' | update_pins 0 >"$STUB/out" 2>&1 || true
+  assert_equals "24.5.1" "$(pins_get nodejs)" "nodejs upgraded"
+  assert_command_fails "test -e '$STUB/mix.calls'" "no mix calls"
+}
+
+test_tool_failure_keeps_pin() {
+  test_suite "update_pins keeps the pin when a tool reinstall fails"
+  reset_stub
+  rm -f "$STUB"/mix.*
+  set_pins "erlang 27.3.4" "elixir 1.18.4-otp-26"
+  selection_save asdf:elixir script:hex
+  : >"$STUB/mix.archives"
+  : >"$STUB/mix.fail-hex"
+  local rc=0
+  printf 'y\n' >"$STUB/in"
+  update_pins 0 <"$STUB/in" >"$STUB/out" 2>&1 || rc=$?
+  assert_equals "1" "$rc" "returns 1"
+  assert_equals "1.18.4-otp-27" "$(pins_get elixir)" "pin not reverted"
+  assert_contains "$UPDATE_PIN_FAILED" "script:hex" "hex listed as failed"
+  rm -f "$STUB/mix.fail-hex"
+}
+
 test_pin_candidates
 test_pins_listing
+test_elixir_upgrade_reinstalls_tools
+test_node_upgrade_leaves_tools
+test_tool_failure_keeps_pin
 test_pins_store_fails
 test_pins_listed_reset
 test_dry_run_box
