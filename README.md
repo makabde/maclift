@@ -15,24 +15,24 @@ safe to repeat, and every file it replaces is backed up first.
 Run this in Terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.0/install | bash
+curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.1/install | bash
 ```
 
 Want to read the script first? It is short:
-[install](https://github.com/makabde/maclift/blob/v1.1.0/install).
+[install](https://github.com/makabde/maclift/blob/v1.1.1/install).
 
 The installer downloads that tagged release to `~/maclift` and starts it.
 After that, `maclift update` follows the `main` branch. To skip all
 questions and reuse your saved answers, add `-y`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.0/install | bash -s -- -y
+curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.1/install | bash -s -- -y
 ```
 
 To use another folder, set `MACLIFT_DIR` for `bash`, after the pipe:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.0/install | MACLIFT_DIR=~/somewhere bash
+curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.1/install | MACLIFT_DIR=~/somewhere bash
 ```
 
 Or clone it yourself:

@@ -3,8 +3,8 @@
 # maclift one-line installer. Downloads a tagged maclift release into
 # ~/maclift (or $MACLIFT_DIR) and starts it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.0/install | bash
-#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.0/install | bash -s -- -y
+#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.1/install | bash
+#   curl -fsSL https://raw.githubusercontent.com/makabde/maclift/v1.1.1/install | bash -s -- -y
 #
 # Arguments are passed on to maclift. A folder that already holds maclift is
 # reused as is. maclift turns the downloaded folder into a git clone once git
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 MACLIFT_REPO="${MACLIFT_REPO:-makabde/maclift}"
-MACLIFT_TAG="${MACLIFT_TAG:-v1.1.0}"
+MACLIFT_TAG="${MACLIFT_TAG:-v1.1.1}"
 
 _mi_tmp=""
 _mi_made=""
