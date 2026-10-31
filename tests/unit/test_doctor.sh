@@ -171,13 +171,40 @@ test_git_signing_key() {
   conf_set "$MACLIFT_CONFIG_DIR/user.conf" MACLIFT_SIGNING_KEY "ABCDEF0123456789"
   out="$(doctor_check_git 2>&1)" || rc=$?
   assert_equals "1" "$rc" "unknown signing key fails"
-  assert_contains "$out" "gpg --import your key, or remove MACLIFT_SIGNING_KEY from user.conf" "fix text"
+  assert_contains "$out" 'gpg --import your key, or set MACLIFT_SIGNING_KEY="" in user.conf to turn signing off' "fix text"
   echo "ABCDEF0123456789 test@example.com" >"$MACLIFT_STUB_DIR/gpg.secret"
   rc=0
   doctor_check_git >/dev/null 2>&1 || rc=$?
   assert_equals "0" "$rc" "known signing key passes"
   out="$(MACLIFT_GPG="$T/no-gpg" doctor_check_git 2>&1)" || true
   assert_contains "$out" "gpg not found" "missing gpg binary is named"
+  unset MACLIFT_GPG
+}
+
+test_git_signing_non_gpg() {
+  test_suite "doctor: no GPG keyring check for ssh/x509 signing"
+  setup_healthy
+  export MACLIFT_GPG="$PROJECT_ROOT/tests/stubs/gpg"
+  : >"$MACLIFT_STUB_DIR/gpg.secret"
+  local rc=0 out
+  conf_set "$MACLIFT_CONFIG_DIR/user.conf" MACLIFT_SIGNING_KEY "~/.ssh/id_ed25519.pub"
+  git config -f "$MACLIFT_HOME/.gitconfig.local" gpg.format ssh
+  out="$(doctor_check_git 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "gpg.format ssh in .gitconfig.local: keyring not checked"
+  rc=0
+  out="$(MACLIFT_GPG="$T/no-gpg" doctor_check_git 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "gpg.format ssh: missing gpg binary is fine"
+  git config -f "$MACLIFT_HOME/.gitconfig.local" --unset gpg.format
+  # ~/.gitconfig is a link into the repo: replace the link, never write through it.
+  rm -f "$MACLIFT_HOME/.gitconfig"
+  printf '[gpg]\n\tformat = x509\n[include]\n\tpath = ~/.gitconfig.local\n' >"$MACLIFT_HOME/.gitconfig"
+  rc=0
+  doctor_check_git >/dev/null 2>&1 || rc=$?
+  assert_equals "0" "$rc" "gpg.format x509 in the shared gitconfig: keyring not checked"
+  printf '[gpg]\n\tformat = openpgp\n' >"$MACLIFT_HOME/.gitconfig"
+  rc=0
+  doctor_check_git >/dev/null 2>&1 || rc=$?
+  assert_equals "1" "$rc" "gpg.format openpgp: keyring still checked"
   unset MACLIFT_GPG
 }
 
@@ -447,6 +474,7 @@ test_repo_link
 test_asdf
 test_git_mismatch
 test_git_signing_key
+test_git_signing_non_gpg
 test_git_alt_identity
 test_brew_missing
 test_read_only

@@ -351,6 +351,15 @@ doctor_check_toolchains() {
   fi
 }
 
+# _doctor_gpg_format: prints the gpg.format git uses: from ~/.gitconfig with
+# its includes (resolved against the maclift home), else from
+# ~/.gitconfig.local alone. Prints nothing when it is not set.
+_doctor_gpg_format() {
+  HOME="$MACLIFT_HOME" git config --includes -f "$MACLIFT_HOME/.gitconfig" --get gpg.format 2>/dev/null \
+    || git config -f "$MACLIFT_HOME/.gitconfig.local" --get gpg.format 2>/dev/null \
+    || true
+}
+
 doctor_check_git() {
   local want have key alt_want alt_have
   want="$(conf_get "$MACLIFT_CONFIG_DIR/user.conf" MACLIFT_EMAIL 2>/dev/null)" || want=""
@@ -372,12 +381,17 @@ doctor_check_git() {
       return 1
     fi
   fi
+  # ssh or x509 signing (gpg.format) does not use the GPG keyring.
+  case "$(_doctor_gpg_format)" in
+    "" | [Oo][Pp][Ee][Nn][Pp][Gg][Pp]) ;;
+    *) key="" ;;
+  esac
   if [ -n "$key" ] && ! command -v "${MACLIFT_GPG:-gpg}" >/dev/null 2>&1; then
     _doctor_fail "gpg not found, so the signing key $key cannot be checked" "brew install gnupg"
     return 1
   fi
   if [ -n "$key" ] && ! GNUPGHOME="$(maclift_gnupghome)" "${MACLIFT_GPG:-gpg}" --list-secret-keys -- "$key" >/dev/null 2>&1; then
-    _doctor_fail "Signing key $key is not in your GPG keyring" "gpg --import your key, or remove MACLIFT_SIGNING_KEY from user.conf"
+    _doctor_fail "Signing key $key is not in your GPG keyring" 'gpg --import your key, or set MACLIFT_SIGNING_KEY="" in user.conf to turn signing off'
     return 1
   fi
   _doctor_ok "Git identity matches your saved answers"

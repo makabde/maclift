@@ -288,7 +288,7 @@ test_adopt_signing_key() {
   conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
   hand_signing_file "$g"
   out="$(identity_render_gitconfig 0)"
-  assert_contains "$out" "Kept commit signing with key HANDKEY0123456789; saved it to user.conf as MACLIFT_SIGNING_KEY" "note printed"
+  assert_contains "$out" "Kept commit signing with key HANDKEY0123456789; saved it to user.conf as MACLIFT_SIGNING_KEY (set it to \"\" to turn signing off)" "note printed"
   assert_equals "HANDKEY0123456789" "$(conf_get "$conf" MACLIFT_SIGNING_KEY)" "user.conf gains the key"
   assert_equals "HANDKEY0123456789" "$(git config -f "$g" user.signingkey)" "signingkey kept"
   assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "commit.gpgsign kept"
@@ -382,7 +382,7 @@ test_alt_adopt_and_carry() {
   assert_command_fails "conf_get '$ALT_CONF' MACLIFT_ALT_SIGNING_KEY" "dry run: user.conf unchanged"
   assert_command_fails "identity_alt_current" "pending adoption: not current"
   out="$(identity_render_alt 0)"
-  assert_contains "$out" "Kept commit signing with key WORKHANDKEY001; saved it to user.conf as MACLIFT_ALT_SIGNING_KEY" "alt note"
+  assert_contains "$out" "Kept commit signing with key WORKHANDKEY001; saved it to user.conf as MACLIFT_ALT_SIGNING_KEY (set it to \"\" to turn signing off)" "alt note"
   assert_equals "WORKHANDKEY001" "$(conf_get "$ALT_CONF" MACLIFT_ALT_SIGNING_KEY)" "alt key adopted"
   assert_equals "WORKHANDKEY001" "$(git config -f "$g" user.signingkey)" "alt signingkey kept"
   assert_equals "true" "$(git config -f "$g" tag.gpgsign)" "alt tag signing on"
@@ -410,7 +410,110 @@ test_alt_blank_key_not_adopted() {
   assert_equals "false" "$(git config -f "$g" commit.gpgsign)" "explicit off: signing off"
 }
 
+test_alt_include_user_paths_kept() {
+  test_suite "identity: user's own includeIf for the alt folder is kept"
+  alt_setup
+  conf_set "$ALT_CONF" MACLIFT_ALT_DIR "~/Work"
+  local g="$MACLIFT_HOME/.gitconfig.local" out rc
+  printf '[includeIf "gitdir:~/Work/"]\n\tpath = ~/.gitconfig.work-extra\n' >"$g"
+  rc=0
+  identity_render_gitconfig 0 >/dev/null || rc=$?
+  assert_equals "0" "$rc" "one user path: render succeeds"
+  assert_equals "$(printf '~/.gitconfig.work-extra\n~/.gitconfig.alt')" "$(git config -f "$g" --get-all 'includeIf.gitdir:~/Work/.path')" "one user path: kept, maclift's once and last"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "one user path: re-render is a no-op"
+  printf '[includeIf "gitdir:~/Work/"]\n\tpath = ~/.gitconfig.a\n\tpath = ~/.gitconfig.b\n' >"$g"
+  rc=0
+  identity_render_gitconfig 0 >/dev/null 2>&1 || rc=$?
+  assert_equals "0" "$rc" "two user paths: render succeeds"
+  assert_equals "$(printf '~/.gitconfig.a\n~/.gitconfig.b\n~/.gitconfig.alt')" "$(git config -f "$g" --get-all 'includeIf.gitdir:~/Work/.path')" "two user paths: kept, maclift's once"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "two user paths: re-render is a no-op"
+}
+
+test_ssh_signing_carried() {
+  test_suite "identity: ssh signing is kept as is, not adopted"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  printf '[user]\n\tsigningkey = ~/.ssh/id_ed25519.pub\n[gpg]\n\tformat = ssh\n[gpg "ssh"]\n\tallowedSignersFile = ~/.ssh/allowed\n[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = true\n' >"$g"
+  out="$(identity_render_gitconfig 0)"
+  refute_contains "$out" "Kept" "no adoption note"
+  assert_command_fails "conf_get '$conf' MACLIFT_SIGNING_KEY" "user.conf has no MACLIFT_SIGNING_KEY"
+  assert_equals "~/.ssh/id_ed25519.pub" "$(git config -f "$g" user.signingkey)" "ssh signingkey kept"
+  assert_equals "ssh" "$(git config -f "$g" gpg.format)" "gpg.format kept"
+  assert_equals "~/.ssh/allowed" "$(git config -f "$g" gpg.ssh.allowedSignersFile)" "gpg.ssh setting kept"
+  assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "commit.gpgsign kept"
+  assert_equals "true" "$(git config -f "$g" tag.gpgsign)" "tag.gpgsign kept"
+  assert_equals "1" "$(git config -f "$g" --get-all user.signingkey | wc -l | tr -d ' ')" "signingkey once"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "second render is a no-op"
+}
+
+test_gpg_key_drops_other_format() {
+  test_suite "identity: with MACLIFT_SIGNING_KEY, gpg.format is maclift's"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local"
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  conf_set "$conf" MACLIFT_SIGNING_KEY "ABCDEF0123456789"
+  printf '[user]\n\tsigningkey = ~/.ssh/id_ed25519.pub\n[gpg]\n\tformat = ssh\n\tprogram = /opt/gpg\n' >"$g"
+  identity_render_gitconfig 0 >/dev/null
+  assert_equals "ABCDEF0123456789" "$(git config -f "$g" user.signingkey)" "GPG key from user.conf"
+  assert_equals "" "$(git config -f "$g" gpg.format || true)" "gpg.format = ssh dropped"
+  assert_equals "/opt/gpg" "$(git config -f "$g" gpg.program)" "other gpg settings kept"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "second render is a no-op"
+}
+
+test_adopt_turns_signing_on_note() {
+  test_suite "identity: adopting a key without gpgsign says signing is turned on"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  printf '[user]\n\tsigningkey = KEYONLY01\n' >"$g"
+  out="$(identity_render_gitconfig 0)"
+  assert_contains "$out" 'Kept signing key KEYONLY01 and turned on commit and tag signing; saved it to user.conf as MACLIFT_SIGNING_KEY (set it to "" to turn signing off)' "note says signing is turned on"
+  assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "signing on"
+}
+
+test_unreadable_old_file_warns() {
+  test_suite "identity: unreadable old file is named in the warning"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" err
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  printf '[broken\n' >"$g"
+  err="$(identity_render_gitconfig 0 2>&1 >/dev/null)"
+  assert_contains "$err" "signing settings in it could not be kept; the old file is backed up" "warning"
+  assert_equals "1" "$(find "$MACLIFT_CONFIG_DIR/backups" -name .gitconfig.local | wc -l | tr -d ' ')" "old file backed up"
+}
+
+test_alt_ssh_signing_carried() {
+  test_suite "identity: alt ssh signing kept as is"
+  alt_setup
+  local g="$MACLIFT_HOME/.gitconfig.alt" out
+  printf '[user]\n\tsigningkey = ~/.ssh/work.pub\n[gpg]\n\tformat = ssh\n[commit]\n\tgpgsign = true\n' >"$g"
+  out="$(identity_render_alt 0)"
+  refute_contains "$out" "Kept" "no adoption note"
+  assert_command_fails "conf_get '$ALT_CONF' MACLIFT_ALT_SIGNING_KEY" "no MACLIFT_ALT_SIGNING_KEY"
+  assert_equals "~/.ssh/work.pub" "$(git config -f "$g" user.signingkey)" "alt ssh key kept"
+  assert_equals "1" "$(git config -f "$g" --get-all user.signingkey | wc -l | tr -d ' ')" "alt key once (no blank key added)"
+  assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "alt commit signing kept"
+  assert_equals "ssh" "$(git config -f "$g" gpg.format)" "alt gpg.format kept"
+  assert_command_succeeds "identity_alt_current" "alt current"
+  assert_contains "$(identity_render_alt 0)" "ok $g" "alt re-render no-op"
+  conf_set "$ALT_CONF" MACLIFT_ALT_SIGNING_KEY "WORKGPG01"
+  identity_render_alt 0 >/dev/null
+  assert_equals "WORKGPG01" "$(git config -f "$g" user.signingkey)" "alt GPG key from user.conf"
+  assert_equals "" "$(git config -f "$g" gpg.format || true)" "alt gpg.format dropped with a GPG key"
+}
+
 test_roundtrip
+test_alt_include_user_paths_kept
+test_ssh_signing_carried
+test_gpg_key_drops_other_format
+test_adopt_turns_signing_on_note
+test_unreadable_old_file_warns
+test_alt_ssh_signing_carried
 test_adopt_signing_key
 test_signing_explicit_off
 test_carry_unmanaged
