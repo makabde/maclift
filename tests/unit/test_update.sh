@@ -195,6 +195,10 @@ test_pins_install_fail() {
 test_pins_store_fails() {
   test_suite "update_pins when the pin cannot be stored"
   set_pins "nodejs 24.3.0"
+  # Fresh logs: earlier tests in this file log installs too, and a run in the
+  # same second (or a leftover MACLIFT_LOG) would otherwise be read here.
+  rm -rf "$MACLIFT_CONFIG_DIR/logs"
+  unset MACLIFT_RUN_ID MACLIFT_LOG
   local out rc=0
   _pins_store() { return 1; }
   out="$(printf 'y\n' | update_pins 0 2>/dev/null)" || rc=$?
@@ -203,7 +207,7 @@ test_pins_store_fails() {
   assert_equals "1" "$rc" "returns 1"
   assert_contains "$out" "✗ nodejs 24.5.1 could not be pinned; kept 24.3.0" "says so"
   assert_equals "24.3.0" "$(pins_get nodejs)" "pin unchanged"
-  assert_command_fails "grep -q 'installing asdf:nodejs' '${MACLIFT_LOG:-/dev/null}'" "nothing installed"
+  assert_command_fails "grep -rqs 'installing asdf:nodejs' '$MACLIFT_CONFIG_DIR/logs'" "nothing installed"
 }
 
 test_pins_listed_reset() {
