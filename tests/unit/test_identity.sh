@@ -32,6 +32,14 @@ export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=/dev/null
 unset MACLIFT_ASSUME_YES
 
+# refute_contains <haystack> <needle> <message>: passes when needle is absent.
+refute_contains() {
+  case "$1" in
+    *"$2"*) assert_false "$1" "$3" ;;
+    *) assert_true "absent" "$3" ;;
+  esac
+}
+
 fresh_home() {
   MACLIFT_HOME="$(mktemp -d)"
   export MACLIFT_HOME HOME="$MACLIFT_HOME"
@@ -267,7 +275,149 @@ test_alt_no_key_never_signs_personal() {
   assert_equals "true" "$(GIT_CONFIG_GLOBAL=$gl git -C "$MACLIFT_HOME/Work/proj" config tag.gpgsign)" "with alt key: tag.gpgsign true"
 }
 
+# A hand-written ~/.gitconfig.local with signing, as on a Mac set up by hand.
+hand_signing_file() {
+  printf '[user]\n\tname = Old Name\n\temail = old@example.com\n\tsigningkey = HANDKEY0123456789\n[commit]\n\tgpgsign = true\n[tag]\n\tgpgSign = true\n' >"$1"
+}
+
+test_adopt_signing_key() {
+  test_suite "identity: keeps hand-set signing (adopts the key)"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  hand_signing_file "$g"
+  out="$(identity_render_gitconfig 0)"
+  assert_contains "$out" "Kept commit signing with key HANDKEY0123456789; saved it to user.conf as MACLIFT_SIGNING_KEY" "note printed"
+  assert_equals "HANDKEY0123456789" "$(conf_get "$conf" MACLIFT_SIGNING_KEY)" "user.conf gains the key"
+  assert_equals "HANDKEY0123456789" "$(git config -f "$g" user.signingkey)" "signingkey kept"
+  assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "commit.gpgsign kept"
+  assert_equals "true" "$(git config -f "$g" tag.gpgsign)" "tag.gpgsign kept"
+  assert_equals "1" "$(git config -f "$g" --get-all tag.gpgsign | wc -l | tr -d ' ')" "tag.gpgSign not duplicated"
+  assert_equals "ada@example.com" "$(git config -f "$g" user.email)" "email from user.conf"
+  assert_equals "Ada Lovelace" "$(git config -f "$g" user.name)" "name from user.conf"
+  out="$(identity_render_gitconfig 0)"
+  refute_contains "$out" "Kept commit signing" "second run: nothing more to adopt"
+}
+
+test_signing_explicit_off() {
+  test_suite "identity: MACLIFT_SIGNING_KEY=\"\" turns signing off"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out before
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  conf_set "$conf" MACLIFT_SIGNING_KEY ""
+  before="$(cat "$conf")"
+  hand_signing_file "$g"
+  out="$(identity_render_gitconfig 0)"
+  refute_contains "$out" "Kept commit signing" "no adoption note"
+  assert_equals "$before" "$(cat "$conf")" "user.conf unchanged"
+  assert_equals "" "$(git config -f "$g" user.signingkey || true)" "no signingkey"
+  assert_equals "" "$(git config -f "$g" commit.gpgsign || true)" "no commit.gpgsign"
+  assert_equals "" "$(git config -f "$g" tag.gpgsign || true)" "no tag.gpgsign"
+}
+
+test_carry_unmanaged() {
+  test_suite "identity: hand-added settings survive a re-render"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local"
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  conf_set "$conf" MACLIFT_SIGNING_KEY ""
+  printf '# my notes\n[user]\n\temail = hand@example.com\n\tuseConfigOnly = true\n[pull]\n\trebase = true\n[credential]\n\thelper =\n\thelper = osxkeychain\n[alias]\n\tlg = "log --oneline -n 5 ; # x"\n[url "ssh://git.example.com/"]\n\tinsteadOf = https://git.example.com/\n' >"$g"
+  identity_render_gitconfig 0 >/dev/null
+  assert_equals "ada@example.com" "$(git config -f "$g" user.email)" "owned email from user.conf"
+  assert_equals "1" "$(git config -f "$g" --get-all user.email | wc -l | tr -d ' ')" "one email only"
+  assert_equals "true" "$(git config -f "$g" pull.rebase)" "pull.rebase kept"
+  assert_equals "true" "$(git config -f "$g" user.useConfigOnly)" "user.useConfigOnly kept"
+  assert_equals "$(printf '\nosxkeychain')" "$(git config -f "$g" --get-all credential.helper)" "multi-valued credential.helper kept in order"
+  assert_equals "log --oneline -n 5 ; # x" "$(git config -f "$g" alias.lg)" "value with ; and # kept"
+  assert_equals "https://git.example.com/" "$(git config -f "$g" 'url.ssh://git.example.com/.insteadOf')" "subsection key kept"
+  local n
+  n="$(find "$MACLIFT_CONFIG_DIR/backups" -name .gitconfig.local | wc -l | tr -d ' ')"
+  assert_equals "1" "$n" "changed file backed up"
+  local out
+  out="$(identity_render_gitconfig 0)"
+  assert_contains "$out" "ok $g" "second render leaves the file alone"
+  assert_equals "1" "$(find "$MACLIFT_CONFIG_DIR/backups" -name .gitconfig.local | wc -l | tr -d ' ')" "no new backup"
+}
+
+test_carry_include_last() {
+  test_suite "identity: alt includeIf stays last, old one replaced"
+  alt_setup
+  conf_set "$ALT_CONF" MACLIFT_ALT_DIR "~/Work"
+  local g="$MACLIFT_HOME/.gitconfig.local"
+  printf '[includeIf "gitdir:~/Old/"]\n\tpath = ~/.gitconfig.alt\n[includeIf "gitdir:~/Other/"]\n\tpath = ~/.gitconfig.other\n[pull]\n\trebase = true\n' >"$g"
+  identity_render_gitconfig 0 >/dev/null
+  assert_equals "" "$(git config -f "$g" 'includeIf.gitdir:~/Old/.path' || true)" "old maclift includeIf dropped"
+  assert_equals "~/.gitconfig.other" "$(git config -f "$g" 'includeIf.gitdir:~/Other/.path')" "unrelated includeIf kept"
+  assert_contains "$(git config -f "$g" --list | tail -n 1)" "includeif.gitdir:~/Work/.path=~/.gitconfig.alt" "alt includeIf is last"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "re-render is a no-op"
+}
+
+test_adopt_dry_run() {
+  test_suite "identity: dry run reports adoption, writes nothing"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out before_conf before_g
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  hand_signing_file "$g"
+  before_conf="$(cat "$conf")"
+  before_g="$(cat "$g")"
+  out="$(identity_render_gitconfig 1)"
+  assert_contains "$out" "HANDKEY0123456789" "names the key it would keep"
+  assert_contains "$out" "MACLIFT_SIGNING_KEY" "names the user.conf key"
+  assert_equals "$before_conf" "$(cat "$conf")" "user.conf unchanged"
+  assert_equals "$before_g" "$(cat "$g")" ".gitconfig.local unchanged"
+  assert_command_fails "[ -d '$MACLIFT_CONFIG_DIR/backups' ]" "no backup made"
+}
+
+test_alt_adopt_and_carry() {
+  test_suite "identity: alt file keeps a hand-set key and extra settings"
+  alt_setup
+  local g="$MACLIFT_HOME/.gitconfig.alt" out
+  printf '[user]\n\tname = Work User\n\temail = work@example.com\n\tsigningkey = WORKHANDKEY001\n[commit]\n\tgpgsign = true\n[core]\n\tsshCommand = ssh -i ~/.ssh/work\n' >"$g"
+  out="$(identity_render_alt 1)"
+  assert_contains "$out" "WORKHANDKEY001" "dry run names the alt key"
+  assert_command_fails "conf_get '$ALT_CONF' MACLIFT_ALT_SIGNING_KEY" "dry run: user.conf unchanged"
+  assert_command_fails "identity_alt_current" "pending adoption: not current"
+  out="$(identity_render_alt 0)"
+  assert_contains "$out" "Kept commit signing with key WORKHANDKEY001; saved it to user.conf as MACLIFT_ALT_SIGNING_KEY" "alt note"
+  assert_equals "WORKHANDKEY001" "$(conf_get "$ALT_CONF" MACLIFT_ALT_SIGNING_KEY)" "alt key adopted"
+  assert_equals "WORKHANDKEY001" "$(git config -f "$g" user.signingkey)" "alt signingkey kept"
+  assert_equals "true" "$(git config -f "$g" tag.gpgsign)" "alt tag signing on"
+  assert_equals "ssh -i ~/.ssh/work" "$(git config -f "$g" core.sshCommand)" "extra alt setting kept"
+  assert_command_succeeds "identity_alt_current" "current after render"
+  assert_contains "$(identity_render_alt 0)" "ok $g" "re-render is a no-op"
+  git config -f "$g" --add pull.rebase true
+  assert_command_succeeds "identity_alt_current" "hand-added setting still current"
+}
+
+test_alt_blank_key_not_adopted() {
+  test_suite "identity: maclift's blank alt key is not adopted"
+  alt_setup
+  local g="$MACLIFT_HOME/.gitconfig.alt" out
+  identity_render_alt 0 >/dev/null
+  assert_equals "" "$(git config -f "$g" user.signingkey)" "blank key written"
+  out="$(identity_render_alt 0)"
+  refute_contains "$out" "Kept commit signing" "no adoption"
+  assert_command_fails "conf_get '$ALT_CONF' MACLIFT_ALT_SIGNING_KEY" "no MACLIFT_ALT_SIGNING_KEY line"
+  assert_command_succeeds "identity_alt_current" "still current"
+  conf_set "$ALT_CONF" MACLIFT_ALT_SIGNING_KEY ""
+  printf '[user]\n\tsigningkey = SOMEKEY\n' >>"$g"
+  identity_render_alt 0 >/dev/null
+  assert_equals "" "$(git config -f "$g" user.signingkey)" "explicit off: key blank"
+  assert_equals "false" "$(git config -f "$g" commit.gpgsign)" "explicit off: signing off"
+}
+
 test_roundtrip
+test_adopt_signing_key
+test_signing_explicit_off
+test_carry_unmanaged
+test_carry_include_last
+test_adopt_dry_run
+test_alt_adopt_and_carry
+test_alt_blank_key_not_adopted
 test_alt_deselected
 test_alt_bad_dir_and_space
 test_alt_no_key_never_signs_personal

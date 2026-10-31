@@ -85,8 +85,99 @@ _identity_install() {
   echo "wrote $target"
 }
 
+# _identity_lc <text>: prints text in lower case (ASCII only; bash 3.2 has
+# no ${x,,}). Git section and key names are case-insensitive.
+_identity_lc() {
+  printf '%s\n' "$1" | LC_ALL=C tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz'
+}
+
+# _identity_owned <kind> <name> <value>: succeeds when maclift writes this
+# setting itself in that file (kind: local or alt), so the old value must
+# not be carried over. In .gitconfig.local that includes includeIf paths
+# that point at ~/.gitconfig.alt (maclift adds its own when the second
+# identity is active).
+_identity_owned() {
+  local kind="$1" name value="$3"
+  name="$(_identity_lc "$2")"
+  case "$name" in
+    user.name | user.email | user.signingkey | commit.gpgsign | tag.gpgsign) return 0 ;;
+  esac
+  [ "$kind" = local ] || return 1
+  case "$name" in
+    includeif.gitdir:*.path)
+      # shellcheck disable=SC2088 # the literal ~/ form maclift writes
+      case "$value" in "~/.gitconfig.alt" | "$MACLIFT_HOME/.gitconfig.alt") return 0 ;; esac
+      ;;
+  esac
+  return 1
+}
+
+# _identity_carry <kind> <old> <new>: appends every setting of the old file
+# that maclift does not own (see _identity_owned) to new, in file order,
+# with --add so keys with several values keep all of them. Comments and
+# layout are not kept; values are. A missing old file carries nothing. An
+# old file git cannot read is reported on stderr and carries nothing (it is
+# still backed up before being replaced). Returns 1 if a write fails.
+_identity_carry() {
+  local kind="$1" old="$2" new="$3" entry name value
+  [ -f "$old" ] || return 0
+  if ! git config -f "$old" --list >/dev/null 2>&1; then
+    echo "maclift: could not read the settings in $old; only maclift's own settings are written (the old file is backed up)" >&2
+    return 0
+  fi
+  while IFS= read -r -d '' entry; do
+    case "$entry" in
+      *$'\n'*)
+        name="${entry%%$'\n'*}"
+        value="${entry#*$'\n'}"
+        ;;
+      *)
+        # A key with no "= value" means true.
+        name="$entry"
+        value=true
+        ;;
+    esac
+    _identity_owned "$kind" "$name" "$value" && continue
+    git config -f "$new" --add "$name" "$value" || return 1
+  done < <(git config -f "$old" --null --list 2>/dev/null)
+}
+
+# _identity_adoptable <conf_key> <file>: prints the user.signingkey of file
+# and succeeds when user.conf has no conf_key line at all and that key is
+# not empty. A present but empty conf_key means signing is off on purpose.
+_identity_adoptable() {
+  local key
+  conf_get "$(_identity_conf)" "$1" >/dev/null 2>&1 && return 1
+  [ -f "$2" ] || return 1
+  key="$(git config -f "$2" user.signingkey 2>/dev/null)" || return 1
+  [ -n "$key" ] || return 1
+  printf '%s\n' "$key"
+}
+
+# _identity_adopt <conf_key> <file> <dry_run>: when file has a signing key
+# user.conf does not know about (see _identity_adoptable), saves it to
+# user.conf so the re-render keeps signing, and says so. A dry run only
+# says what it would do. Returns 1 if saving fails.
+_identity_adopt() {
+  local conf_key="$1" file="$2" dry_run="${3:-0}" key
+  key="$(_identity_adoptable "$conf_key" "$file")" || return 0
+  if [ "$dry_run" = "1" ]; then
+    echo "would keep commit signing with key $key and save it to user.conf as $conf_key"
+    return 0
+  fi
+  conf_set "$(_identity_conf)" "$conf_key" "$key" || {
+    echo "maclift: could not save $conf_key to user.conf" >&2
+    return 1
+  }
+  maclift_note "Kept commit signing with key $key; saved it to user.conf as $conf_key"
+}
+
 # identity_render_gitconfig <dry_run>: writes $MACLIFT_HOME/.gitconfig.local.
-# With MACLIFT_SIGNING_KEY set it also turns on commit/tag signing.
+# Name and email come from user.conf. With MACLIFT_SIGNING_KEY set it also
+# turns on commit/tag signing; with no MACLIFT_SIGNING_KEY line at all a
+# signing key already in the file is first saved to user.conf (see
+# _identity_adopt); MACLIFT_SIGNING_KEY="" means no signing.
+# Every other setting already in the file is kept (see _identity_carry).
 # With MACLIFT_ALT_DIR set it ends with an includeIf for that folder, so the
 # second identity (~/.gitconfig.alt) overrides everything above it.
 # Existing file that differs is backed up first; identical file is left alone.
@@ -96,7 +187,6 @@ identity_render_gitconfig() {
   target="$MACLIFT_HOME/.gitconfig.local"
   name="$(conf_get "$conf" MACLIFT_NAME 2>/dev/null || true)"
   email="$(conf_get "$conf" MACLIFT_EMAIL 2>/dev/null || true)"
-  signing="$(conf_get "$conf" MACLIFT_SIGNING_KEY 2>/dev/null || true)"
   alt_dir=""
   if identity_alt_active; then
     alt_dir="$(conf_get "$conf" MACLIFT_ALT_DIR 2>/dev/null || true)"
@@ -108,10 +198,12 @@ identity_render_gitconfig() {
   if [ -z "$name" ] || [ -z "$email" ]; then
     die "name/email missing in $conf; run maclift interactively first"
   fi
+  _identity_adopt MACLIFT_SIGNING_KEY "$target" "$dry_run" || return 1
   if [ "$dry_run" = "1" ]; then
     echo "would write $target"
     return 0
   fi
+  signing="$(conf_get "$conf" MACLIFT_SIGNING_KEY 2>/dev/null || true)"
   tmp="$(mktemp "$target.XXXXXX")" || return 1
   cp "$MACLIFT_DIR/templates/gitconfig.local.tmpl" "$tmp" || { rm -f "$tmp"; return 1; }
   if ! git config -f "$tmp" user.name "$name" || ! git config -f "$tmp" user.email "$email"; then
@@ -126,6 +218,7 @@ identity_render_gitconfig() {
       return 1
     fi
   fi
+  _identity_carry local "$target" "$tmp" || { rm -f "$tmp"; return 1; }
   if [ -n "$alt_dir" ]; then
     # shellcheck disable=SC2088 # git expands the literal ~/ itself
     if ! git config -f "$tmp" "includeIf.gitdir:${alt_dir}/.path" "~/.gitconfig.alt"; then
@@ -233,39 +326,50 @@ _identity_alt_require() {
   fi
 }
 
-# _identity_alt_build <file>: writes the second identity config into file
-# (overwriting it). With MACLIFT_ALT_SIGNING_KEY it signs commits and tags
-# with that key; without one it turns both off and blanks user.signingkey so
-# work in that folder never uses the personal key. Returns 1 if a value is
-# missing or git config fails.
+# _identity_alt_build <file> [<old>]: writes the second identity config
+# into file (overwriting it), keeping every setting of old (default
+# $MACLIFT_HOME/.gitconfig.alt) that maclift does not own. With
+# MACLIFT_ALT_SIGNING_KEY it signs commits and tags with that key; with no
+# MACLIFT_ALT_SIGNING_KEY line it uses a non-empty key found in old (the one
+# identity_render_alt adopts); otherwise it turns both off and blanks
+# user.signingkey so work in that folder never uses the personal key.
+# Returns 1 if a value is missing or git config fails.
 _identity_alt_build() {
-  local file="$1" conf name email key
+  local file="$1" old="${2:-$MACLIFT_HOME/.gitconfig.alt}" conf name email key
   conf="$(_identity_conf)"
   name="$(conf_get "$conf" MACLIFT_ALT_NAME 2>/dev/null || true)"
   email="$(conf_get "$conf" MACLIFT_ALT_EMAIL 2>/dev/null || true)"
-  key="$(conf_get "$conf" MACLIFT_ALT_SIGNING_KEY 2>/dev/null || true)"
+  key="$(conf_get "$conf" MACLIFT_ALT_SIGNING_KEY 2>/dev/null)" \
+    || key="$(_identity_adoptable MACLIFT_ALT_SIGNING_KEY "$old")" \
+    || key=""
   _identity_alt_require || return 1
-  printf '# Generated by maclift from ~/.config/maclift/user.conf. Do not edit by hand.\n# Second git identity, used inside the folder named by MACLIFT_ALT_DIR.\n' >"$file" || return 1
+  printf '# Generated by maclift from ~/.config/maclift/user.conf. Name, email and\n# signing come from user.conf; other settings added here are kept.\n# Second git identity, used inside the folder named by MACLIFT_ALT_DIR.\n' >"$file" || return 1
   git config -f "$file" user.name "$name" || return 1
   git config -f "$file" user.email "$email" || return 1
   if [ -n "$key" ]; then
     git config -f "$file" user.signingkey "$key" \
       && git config -f "$file" commit.gpgsign true \
-      && git config -f "$file" tag.gpgsign true
-    return
+      && git config -f "$file" tag.gpgsign true \
+      || return 1
+  else
+    # No alt key: switch signing off and blank the key, so an explicit -S
+    # fails instead of signing as the personal identity.
+    git config -f "$file" commit.gpgsign false \
+      && git config -f "$file" tag.gpgsign false \
+      && git config -f "$file" user.signingkey "" \
+      || return 1
   fi
-  # No alt key: switch signing off and blank the key, so an explicit -S fails
-  # instead of signing as the personal identity.
-  git config -f "$file" commit.gpgsign false \
-    && git config -f "$file" tag.gpgsign false \
-    && git config -f "$file" user.signingkey ""
+  _identity_carry alt "$old" "$file"
 }
 
 # identity_alt_current: 0 when $MACLIFT_HOME/.gitconfig.alt is exactly what
-# user.conf renders to now. Writes only a temp file outside the home folder.
+# user.conf renders to now (with the file's own extra settings kept), and
+# there is no signing key waiting to be saved to user.conf. Writes only a
+# temp file outside the home folder.
 identity_alt_current() {
   local tmp rc=0
   [ -f "$MACLIFT_HOME/.gitconfig.alt" ] || return 1
+  _identity_adoptable MACLIFT_ALT_SIGNING_KEY "$MACLIFT_HOME/.gitconfig.alt" >/dev/null && return 1
   tmp="$(mktemp "${TMPDIR:-/tmp}/maclift-alt.XXXXXX")" || return 1
   if _identity_alt_build "$tmp" 2>/dev/null; then
     cmp -s "$tmp" "$MACLIFT_HOME/.gitconfig.alt" || rc=1
@@ -277,11 +381,13 @@ identity_alt_current() {
 }
 
 # identity_render_alt <dry_run>: writes $MACLIFT_HOME/.gitconfig.alt from
-# user.conf (see _identity_alt_build). An identical file is left alone.
+# user.conf (see _identity_alt_build), first saving a hand-set signing key
+# to user.conf (see _identity_adopt). An identical file is left alone.
 identity_render_alt() {
   local dry_run="${1:-0}" target tmp
   target="$MACLIFT_HOME/.gitconfig.alt"
   _identity_alt_require || return 1
+  _identity_adopt MACLIFT_ALT_SIGNING_KEY "$target" "$dry_run" || return 1
   if [ "$dry_run" = "1" ]; then
     echo "would write $target"
     return 0

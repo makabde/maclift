@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # maclift item: second git identity for one folder (~/.gitconfig.alt).
-#   second-identity.sh --check   exit 0 when .gitconfig.alt matches user.conf exactly
+#   second-identity.sh --check   exit 0 when .gitconfig.alt matches user.conf (hand-added settings aside)
 #   second-identity.sh           write ~/.gitconfig.alt from user.conf
 # The folder, name and email are asked by maclift itself and kept in user.conf.
 # Works only inside $MACLIFT_HOME and user.conf.
