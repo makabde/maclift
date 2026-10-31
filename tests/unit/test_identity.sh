@@ -507,7 +507,45 @@ test_alt_ssh_signing_carried() {
   assert_equals "" "$(git config -f "$g" gpg.format || true)" "alt gpg.format dropped with a GPG key"
 }
 
+test_sign_by_email_kept() {
+  test_suite "identity: signing without a key (by email) is kept as is"
+  fresh_home
+  local conf="$MACLIFT_CONFIG_DIR/user.conf" g="$MACLIFT_HOME/.gitconfig.local" out
+  conf_set "$conf" MACLIFT_NAME "Ada Lovelace"
+  conf_set "$conf" MACLIFT_EMAIL "ada@example.com"
+  printf '[commit]\n\tgpgsign = true\n[tag]\n\tgpgSign = false\n[gpg]\n\tprogram = /opt/gpg\n' >"$g"
+  out="$(identity_render_gitconfig 0)"
+  refute_contains "$out" "Kept" "no adoption note"
+  assert_command_fails "conf_get '$conf' MACLIFT_SIGNING_KEY" "no MACLIFT_SIGNING_KEY line"
+  assert_equals "true" "$(git config -f "$g" commit.gpgsign)" "commit.gpgsign kept"
+  assert_equals "false" "$(git config -f "$g" tag.gpgsign)" "tag.gpgsign kept (any value)"
+  assert_equals "/opt/gpg" "$(git config -f "$g" gpg.program)" "gpg.program kept"
+  assert_equals "" "$(git config -f "$g" user.signingkey || true)" "no signingkey added"
+  assert_contains "$(identity_render_gitconfig 0)" "ok $g" "second render is a no-op"
+  conf_set "$conf" MACLIFT_SIGNING_KEY ""
+  identity_render_gitconfig 0 >/dev/null
+  assert_equals "" "$(git config -f "$g" commit.gpgsign || true)" "explicit \"\": commit.gpgsign dropped"
+  assert_equals "" "$(git config -f "$g" tag.gpgsign || true)" "explicit \"\": tag.gpgsign dropped"
+}
+
+test_alt_sign_by_email_safety() {
+  test_suite "identity: alt signing without an alt key stays off"
+  alt_setup
+  local g="$MACLIFT_HOME/.gitconfig.alt"
+  printf '[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = true\n[gpg]\n\tprogram = /opt/gpg\n' >"$g"
+  identity_render_alt 0 >/dev/null
+  assert_equals "false" "$(git config -f "$g" commit.gpgsign)" "alt commit.gpgsign forced off"
+  assert_equals "false" "$(git config -f "$g" tag.gpgsign)" "alt tag.gpgsign forced off"
+  assert_equals "1" "$(git config -f "$g" --get-all commit.gpgsign | wc -l | tr -d ' ')" "alt gpgsign once"
+  assert_equals "" "$(git config -f "$g" user.signingkey)" "alt blank signing key"
+  assert_equals "/opt/gpg" "$(git config -f "$g" gpg.program)" "alt gpg.program kept"
+  assert_command_fails "conf_get '$ALT_CONF' MACLIFT_ALT_SIGNING_KEY" "no MACLIFT_ALT_SIGNING_KEY"
+  assert_contains "$(identity_render_alt 0)" "ok $g" "alt re-render no-op"
+}
+
 test_roundtrip
+test_sign_by_email_kept
+test_alt_sign_by_email_safety
 test_alt_include_user_paths_kept
 test_ssh_signing_carried
 test_gpg_key_drops_other_format
