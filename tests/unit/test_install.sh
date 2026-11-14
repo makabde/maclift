@@ -164,7 +164,24 @@ mas:904280696" "$ids" "ids on stdout"
   assert_contains "$out" "Things" "mas name shown"
   echo htop >"$MACLIFT_STUB_DIR/brew.installed"
   assert_command_succeeds "install_is_present brew:htop" "extra present"
-  assert_command_fails "install_is_present mas:904280696" "mas never present"
+  assert_command_fails "install_is_present mas:904280696" "mas app not in mas list: not present"
+}
+
+test_mas_present() {
+  test_suite "App Store apps already installed are skipped"
+  fresh_home
+  export MACLIFT_MAS="$PROJECT_ROOT/tests/stubs/mas"
+  printf '%s\n' "  904280696  Things  (3.21)" "1295203466  Windows App  (11.1)" >"$MACLIFT_STUB_DIR/mas.list"
+  assert_command_succeeds "install_is_present mas:904280696" "listed with leading spaces: present"
+  assert_command_succeeds "install_is_present mas:1295203466" "listed: present"
+  assert_command_fails "install_is_present mas:90428069" "id prefix does not match"
+  assert_command_fails "install_is_present mas:361285480" "not listed: not present"
+  local out
+  out="$(install_run 0 mas:904280696 2>&1)"
+  assert_contains "$out" "already installed" "run skips the installed app"
+  MACLIFT_MAS="$MACLIFT_STUB_DIR/no-such-mas"
+  assert_command_fails "install_is_present mas:904280696" "mas missing: not present"
+  unset MACLIFT_MAS
 }
 
 test_option_like() {
@@ -287,5 +304,6 @@ test_dotfiles
 test_asdf
 test_order
 test_brewfile_local
+test_mas_present
 test_option_like
 test_summary

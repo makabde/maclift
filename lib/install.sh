@@ -62,6 +62,13 @@ install_is_present() {
       esac
       _install_brew list --cask -- "$name" >/dev/null 2>&1
       ;;
+    mas)
+      # `mas list` lines start with the app id. awk reads all of it, so a
+      # match can't end the pipe early (SIGPIPE fails under pipefail). No
+      # mas yet means not installed; the install then says why.
+      "${MACLIFT_MAS:-mas}" list 2>/dev/null |
+        awk -v id="${id#mas:}" '$1 == id { found = 1 } END { exit !found }'
+      ;;
     asdf)
       pin="$(pins_get "$name" 2>/dev/null)" || return 1
       [ -n "$pin" ] || return 1
