@@ -13,7 +13,7 @@
 # MACLIFT_GPG.
 
 DOCTOR_FAILS=0
-DOCTOR_CHECKS="brew path shell repo_link links asdf toolchains git ssh"
+DOCTOR_CHECKS="brew path shell repo_link links tmux_plugins asdf toolchains git ssh"
 NL_DOCTOR='
 '
 
@@ -221,6 +221,63 @@ EOT
     _doctor_ok "Dotfiles linked, no broken links"
   else
     _doctor_fail "Links: $bad" "maclift -y (files in the way are backed up)"
+  fi
+}
+
+# _doctor_plugin_repo <url or owner/repo>: prints owner/repo. Takes what tpm
+# accepts in @plugin (owner/repo, a URL, an optional #branch) and what tpm
+# leaves as a clone's origin (https://git::@github.com/owner/repo).
+_doctor_plugin_repo() {
+  local r="${1%%#*}"
+  r="${r%/}"
+  r="${r%.git}"
+  case "$r" in
+    *://*)
+      r="${r#*://}"
+      r="${r#*@}"
+      r="${r#*/}"
+      ;;
+    *@*:*) r="${r#*:}" ;;
+  esac
+  printf '%s\n' "$r"
+}
+
+# Every @plugin in maclift's plugins.conf goes in ~/.tmux/plugins/<repo name>,
+# so two plugins with the same repo name (say nordtheme/tmux and
+# catppuccin/tmux) share a folder. tpm sees the folder, counts the plugin as
+# installed and never fetches it. Fails when a plugin folder is a clone of a
+# different repo. Folders that are missing or not git clones are skipped.
+doctor_check_tmux_plugins() {
+  local conf="$MACLIFT_DIR/dotfiles/shell/tmux/plugins.conf"
+  local line want name have bad="" fix="" _noglob
+  if ! _doctor_selected dotfiles:tmux; then
+    _doctor_ok "tmux not managed by maclift"
+    return 0
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in *@plugin*) ;; *) continue ;; esac
+    # Split on whitespace without glob expansion.
+    case "$-" in *f*) _noglob=1 ;; *) _noglob=0; set -f ;; esac
+    # shellcheck disable=SC2086
+    set -- $line
+    [ "$_noglob" = 1 ] || set +f
+    case "${1:-}" in set | set-option) ;; *) continue ;; esac
+    while [ "$#" -gt 0 ] && [ "$1" != "@plugin" ]; do shift; done
+    [ "$#" -ge 2 ] || continue
+    want="${2#[\'\"]}"
+    want="$(_doctor_plugin_repo "${want%[\'\"]}")"
+    name="${want##*/}"
+    [ -e "$MACLIFT_HOME/.tmux/plugins/$name/.git" ] || continue
+    have="$(git -C "$MACLIFT_HOME/.tmux/plugins/$name" remote get-url origin 2>/dev/null)" || continue
+    have="$(_doctor_plugin_repo "$have")"
+    [ "$(printf '%s' "$have" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')" ] || continue
+    bad="${bad:+$bad, }~/.tmux/plugins/$name holds $have, not $want"
+    fix="${fix:+$fix && }mv ~/.tmux/plugins/$name ~/.Trash/"
+  done <"$conf"
+  if [ -z "$bad" ]; then
+    _doctor_ok "tmux plugins match plugins.conf"
+  else
+    _doctor_fail "tmux plugins: $bad" "$fix, then press prefix I in tmux"
   fi
 }
 
