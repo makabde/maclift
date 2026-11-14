@@ -70,7 +70,7 @@ test_healthy() {
   local out rc=0
   out="$(cmd_doctor 0 2>&1)" || rc=$?
   assert_equals "0" "$rc" "exit 0"
-  assert_contains "$out" "All 9 checks passed" "summary line"
+  assert_contains "$out" "All 10 checks passed" "summary line"
 }
 
 test_shell_bash() {
@@ -465,6 +465,55 @@ test_toolchains_not_selected_yet() {
   assert_equals "0" "$DOCTOR_FAILS" "not a failure"
 }
 
+# _fake_plugin <folder> <origin url>: a tpm plugin folder cloned from <url>.
+_fake_plugin() {
+  mkdir -p "$MACLIFT_HOME/.tmux/plugins"
+  git init -q "$MACLIFT_HOME/.tmux/plugins/$1"
+  git -C "$MACLIFT_HOME/.tmux/plugins/$1" remote add origin "$2"
+}
+
+test_tmux_plugins_wrong_repo() {
+  test_suite "doctor: tmux plugin folder holds a different repo"
+  setup_healthy
+  _fake_plugin tmux https://git::@github.com/nordtheme/tmux
+  local out rc=0
+  out="$(doctor_check_tmux_plugins 2>&1)" || rc=$?
+  assert_equals "1" "$rc" "fails"
+  assert_contains "$out" "~/.tmux/plugins/tmux" "names the folder"
+  assert_contains "$out" "nordtheme/tmux" "says what is there"
+  assert_contains "$out" "catppuccin/tmux" "says what should be there"
+  assert_contains "$out" "fix: mv ~/.tmux/plugins/tmux ~/.Trash/, then press prefix I in tmux" "fix text"
+  assert_dir_exists "$MACLIFT_HOME/.tmux/plugins/tmux" "doctor leaves the folder alone"
+}
+
+test_tmux_plugins_right_repos() {
+  test_suite "doctor: tmux plugins match plugins.conf"
+  setup_healthy
+  local rc=0 out
+  doctor_check_tmux_plugins >/dev/null 2>&1 || rc=$?
+  assert_equals "0" "$rc" "no plugins installed yet: passes"
+  _fake_plugin tmux https://git::@github.com/catppuccin/tmux
+  _fake_plugin tpm https://github.com/tmux-plugins/tpm
+  _fake_plugin tmux-fingers git@example.com:Morantron/tmux-fingers.git
+  _fake_plugin extrakto https://github.com/LAKTAK/extrakto.git
+  mkdir -p "$MACLIFT_HOME/.tmux/plugins/tmux-yank"
+  rc=0
+  out="$(doctor_check_tmux_plugins 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "tpm, https, ssh and mixed-case remotes pass; a folder that isn't a clone is skipped"
+  assert_contains "$out" "tmux plugins match plugins.conf" "ok label"
+}
+
+test_tmux_plugins_not_selected() {
+  test_suite "doctor: tmux not selected"
+  setup_healthy
+  _fake_plugin tmux https://github.com/nordtheme/tmux
+  conf_set "$MACLIFT_CONFIG_DIR/selection.conf" MACLIFT_ITEMS "script:ssh-key"
+  local rc=0 out
+  out="$(doctor_check_tmux_plugins 2>&1)" || rc=$?
+  assert_equals "0" "$rc" "not checked"
+  assert_contains "$out" "tmux not managed by maclift" "ok label"
+}
+
 test_healthy
 test_shell_bash
 test_path_order
@@ -490,4 +539,7 @@ test_two_uv_is_note_not_fail
 test_note_does_not_count
 test_toolchains_none_selected
 test_toolchains_not_selected_yet
+test_tmux_plugins_wrong_repo
+test_tmux_plugins_right_repos
+test_tmux_plugins_not_selected
 test_summary
